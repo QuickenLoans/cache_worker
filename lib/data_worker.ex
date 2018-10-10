@@ -45,8 +45,8 @@ defmodule DataWorker do
   Steps Taken on a `&fetch(key)` Request:
 
       `&fetch("key")`
-      --> [Cache] --> `{:ok, "value"}`
-          --> `&load("key")` --> `{:error, "Something went wrong!"}`
+      --> [Cache] => `{:ok, "value"}`
+          --> `&load("key")` => `{:error, "Something went wrong!"}`
               --> `{:ok, "Some data!"}`
                   --> *Saved to the cache* => `{:ok, "Some data!"}`
                       --> Data passed to `:return_fn`, if defined. It
@@ -90,7 +90,8 @@ defmodule DataWorker do
   @type key :: term
   @type value :: term
   @type opts :: keyword
-  @type init_return :: {:ok, map} | :ok | {:warn, String.t()} | {:stop, String.t()}
+  @type init_return ::
+          {:ok, map} | :ok | {:warn, String.t()} | {:stop, String.t()}
   @type load_return :: {:ok, value} | {:error, String.t()}
   @type fetch_return :: {:ok, DataWorker.value()} | {atom, term}
 
@@ -116,7 +117,9 @@ defmodule DataWorker do
       def child_spec(_) do
         %{
           id: "#{__MODULE__} Supervisor",
-          start: {DataWorker.Supervisor, :start_link, [__MODULE__, unquote(use_opts)]}
+          start:
+            {DataWorker.Supervisor, :start_link,
+             [__MODULE__, unquote(use_opts)]}
         }
       end
 
@@ -138,21 +141,23 @@ defmodule DataWorker do
       If a cache file is not loaded on startup, this callback will be invoked
       with the DataWorker's `%Config{}`.
 
-      This function should return {:ok, map} if a key/val set should be used
-      to seed the cache, :ok if not, {:warn, reason} if a warning should be
-      logged, and {:stop, reason} if we should halt initialization.
+      This function should return `{:ok, map}` if a key/val set should be
+      used to seed the cache, `:ok` if not, `{:warn, reason}` if a warning
+      should be logged, and `{:stop, reason}` if we should halt
+      initialization.
       """
       @impl true
       @spec init(%Config{}) :: DataWorker.init_return()
       def init(%Config{} = _config), do: :ok
 
-      @doc "Call `&load/2` for each key in the cache. Returns :ok"
+      @doc "Call `&load/2` for each key in the cache. Returns `:ok`"
       @impl true
       @spec full_refresh :: :ok
       def full_refresh, do: DataWorker.full_refresh(__MODULE__)
 
       @doc "Get a particular value out of the cache"
-      @spec fetch(DataWorker.key(), DataWorker.opts()) :: DataWorker.fetch_return()
+      @spec fetch(DataWorker.key(), DataWorker.opts()) ::
+              DataWorker.fetch_return()
       def fetch(key, opts \\ []), do: DataWorker.fetch(__MODULE__, key, opts)
 
       @doc "Fetch a value, using the cache if available"
@@ -160,7 +165,8 @@ defmodule DataWorker do
       def get(key, opts \\ []), do: DataWorker.get(__MODULE__, key, opts)
 
       @doc "Do the work to fetch data for a given key"
-      @spec load(DataWorker.key()) :: {:ok, DataWorker.value()} | {:error, String.t()}
+      @spec load(DataWorker.key()) ::
+              {:ok, DataWorker.value()} | {:error, String.t()}
       def load(key), do: raise("#{__MODULE__} does not implement `&load/1`!")
 
       defoverridable init: 1, load: 1, full_refresh: 0
@@ -186,7 +192,7 @@ defmodule DataWorker do
       end
 
     with {:ok, nil} <- ret do
-      if config.refresh_interval, do: schedule_refresh(config.refresh_interval)
+      maybe_schedule_refresh(config.refresh_interval)
 
       Logger.debug(fn ->
         l = config |> Map.from_struct() |> Enum.into([])
@@ -251,7 +257,7 @@ defmodule DataWorker do
 
     if file, do: cache_dump(bucket, file)
 
-    if interval, do: schedule_refresh(interval)
+    maybe_schedule_refresh(interval)
 
     :ok
   end
@@ -318,7 +324,8 @@ defmodule DataWorker do
         {:ok, nil}
 
       wat ->
-        {:stop, "Unrecognized `&init/1` return from #{config.mod}: #{inspect(wat)}"}
+        {:stop,
+         "Unrecognized `&init/1` return from #{config.mod}: #{inspect(wat)}"}
     end
   end
 
@@ -478,9 +485,11 @@ defmodule DataWorker do
     end
   end
 
-  defp schedule_refresh(interval) do
+  defp maybe_schedule_refresh(interval) when interval > 0 do
     Process.send_after(self(), :refresh, interval * 1_000)
   end
+
+  defp maybe_schedule_refresh(_), do: :nah
 
   # Reads the config defined by :config_section
   defp maybe_read_config_section({:ok, {app, section}})
