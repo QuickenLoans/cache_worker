@@ -107,6 +107,10 @@ defmodule DataWorker do
   @callback full_refresh :: :ok
 
   defmacro __using__(use_opts) do
+    # Compile-time check with friendly reminder
+    is_atom(Keyword.get(use_opts, :bucket, "not atom")) ||
+      raise ":bucket option must be defined in the use options!"
+
     quote do
       @behaviour DataWorker
 
@@ -114,12 +118,7 @@ defmodule DataWorker do
       @impl true
       @spec child_spec(keyword) :: Supervisor.child_spec()
       def child_spec(_) do
-        %{
-          id: "#{__MODULE__} Supervisor",
-          start:
-            {DataWorker.Supervisor, :start_link,
-             [__MODULE__, unquote(use_opts)]}
-        }
+        DataWorker.child_spec(__MODULE__, unquote(use_opts))
       end
 
       @doc "Returns the `%DataWorker.Config{}`"
@@ -178,8 +177,8 @@ defmodule DataWorker do
   end
 
   @doc false
-  def child_spec(config) do
-    %{id: mod, start: {__MODULE__, :start_link, [config]}}
+  def child_spec(mod, use_opts) do
+    %{id: mod, start: {__MODULE__, :start_link, [mod, use_opts]}}
   end
 
   @doc false
