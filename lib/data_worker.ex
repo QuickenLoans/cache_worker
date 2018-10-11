@@ -178,6 +178,11 @@ defmodule DataWorker do
   end
 
   @doc false
+  def child_spec(config) do
+    %{id: mod, start: {__MODULE__, :start_link, [config]}}
+  end
+
+  @doc false
   def start_link(config) do
     GenServer.start_link(__MODULE__, config, name: config.mod)
   end
