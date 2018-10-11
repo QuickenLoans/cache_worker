@@ -3,8 +3,8 @@ defmodule DataWorker do
   Defines a behavior to be implemented for managing data that should be held
   in the VM and periodically refreshed.
 
-  The data is organized as a key/val data store where the keys and vals can
-  be any data type.
+  The data is organized as a key/val data store called a bucket where the
+  keys and vals can be any data type.
 
   If you wanted to keep track of some widgets, you might create your module
   thusly:
@@ -28,19 +28,19 @@ defmodule DataWorker do
 
       Supervisor.start_link(children, opts)
 
-  When WidgetStore is started, it will load the cache file if one was
-  configured. If a `:refresh_interval` was configured, a full refresh of all the
-  data will be triggered at that interval, forever.
+  When WidgetStore is started, it will load the dump file if one was
+  configured. If a `:refresh_interval` was configured, a full refresh of all
+  the data will be triggered at that interval, forever.
 
-  The `WidgetStore` module defines how the value for a given key is found,
+  Your `WidgetStore` module defines how the value for a given key is found,
   but `DataWorker` takes care of parallelizing these calls and the caching
   functionality.
 
   To get a widget, all a consumer needs to do is call `&WidgetStore.get(key)`
-  and it will be returned. (The similar `&fetch/1` does similar, but provides
-  more information.) The value from the cache will be used unless it's the
-  first time for the particular key. In this case, `&WidgetStore.load/1` will
-  be dispatched for the value, which will then be cached and returned.
+  and it will be returned. (`&fetch/1` does similarly, but provides more
+  information.) The value from the cache will be used unless it's the first
+  time for the particular key. In this case, `&WidgetStore.load/1` will be
+  dispatched for the value, which will then be cached and returned.
 
   Steps Taken on a `&fetch(key)` Request:
 
@@ -49,8 +49,7 @@ defmodule DataWorker do
           --> `&load("key")` => `{:error, "Something went wrong!"}`
               --> `{:ok, "Some data!"}`
                   --> *Saved to the cache* => `{:ok, "Some data!"}`
-                      --> Data passed to `:return_fn`, if defined. It
-                          crashed? Sorry, bye.
+                      --> Data passed to `:return_fn`, if defined
                           => {:ok, "New value from return_fn"}
 
   ## Options for `use DataWorker`
@@ -65,8 +64,8 @@ defmodule DataWorker do
   * The `&data_worker_options/0` function. This one allows for options to be
     specified at runtime.
 
-  Into the `use` options keyword list, you may pass in any of the values
-  described for the struct fields in `DataWorker.Config`.
+  In the `use` options, you may pass in any of the values described for the
+  struct fields in `DataWorker.Config`.
 
   ## Options for `&fetch/1` and `&get/2`
 
@@ -93,7 +92,7 @@ defmodule DataWorker do
   @type init_return ::
           {:ok, map} | :ok | {:warn, String.t()} | {:stop, String.t()}
   @type load_return :: {:ok, value} | {:error, String.t()}
-  @type fetch_return :: {:ok, DataWorker.value()} | {atom, term}
+  @type fetch_return :: {:ok, value} | {atom, term}
 
   @doc "Returns the child_spec which should be used by the supervisor"
   @callback child_spec(keyword) :: Supervisor.child_spec()
@@ -143,8 +142,8 @@ defmodule DataWorker do
 
       This function should return `{:ok, map}` if a key/val set should be
       used to seed the cache, `:ok` if not, `{:warn, reason}` if a warning
-      should be logged, and `{:stop, reason}` if we should halt
-      initialization.
+      should be logged, and `{:stop, reason}` if initialization should be
+      halted.
       """
       @impl true
       @spec init(%Config{}) :: DataWorker.init_return()
@@ -155,16 +154,21 @@ defmodule DataWorker do
       @spec full_refresh :: :ok
       def full_refresh, do: DataWorker.full_refresh(__MODULE__)
 
-      @doc "Get a particular value out of the cache"
+      @doc "Fetches the value for a specific key in the bucket."
       @spec fetch(DataWorker.key(), DataWorker.opts()) ::
               DataWorker.fetch_return()
       def fetch(key, opts \\ []), do: DataWorker.fetch(__MODULE__, key, opts)
 
-      @doc "Fetch a value, using the cache if available"
-      @spec get(DataWorker.key(), DataWorker.opts()) :: term
-      def get(key, opts \\ []), do: DataWorker.get(__MODULE__, key, opts)
+      @doc "Gets the value for a specific key in the bucket."
+      @spec get(DataWorker.key(), DataWorker.value(), DataWorker.opts()) :: term
+      def get(key, default \\ nil, opts \\ []),
+        do: DataWorker.get(__MODULE__, key, default, opts)
 
-      @doc "Do the work to fetch data for a given key"
+      @doc """
+      Do the work to procure the value for a given key.
+
+      This is intended only for internal use.
+      """
       @spec load(DataWorker.key()) ::
               {:ok, DataWorker.value()} | {:error, String.t()}
       def load(key), do: raise("#{__MODULE__} does not implement `&load/1`!")
@@ -192,7 +196,7 @@ defmodule DataWorker do
       end
 
     with {:ok, nil} <- ret do
-      maybe_schedule_refresh(config.refresh_interval)
+      maybe_schedule_full_refresh(config.refresh_interval)
 
       Logger.debug(fn ->
         l = config |> Map.from_struct() |> Enum.into([])
@@ -204,7 +208,7 @@ defmodule DataWorker do
   end
 
   @doc "Handle the signal to refresh the cache"
-  def handle_info(:refresh, _) do
+  def handle_info(:full_refresh, _) do
     this_worker_module().full_refresh()
     {:noreply, nil}
   end
@@ -212,11 +216,11 @@ defmodule DataWorker do
   @doc "Fetch a value from the DataWorker"
   @spec fetch(module, key, opts) :: fetch_return
   def fetch(mod, key, opts \\ []) do
-    %Config{} = config = mod.config()
+    %Config{cache_enabled: cache_enabled, bucket: bucket} = mod.config()
 
     ret =
-      if config.cache_enabled do
-        with {:ok, nil} <- Cachex.get(config.bucket, key) do
+      if cache_enabled do
+        with {:ok, nil} <- Cachex.get(bucket, key) do
           {:ok, run_load(mod, key)}
         end
       else
@@ -232,11 +236,11 @@ defmodule DataWorker do
   end
 
   @doc "Get a value from the DataWorker"
-  @spec get(module, term, opts) :: term
-  def get(mod, key, opts \\ []) do
-    case fetch(mod, key, opts) do
+  @spec get(module, key, value, opts) :: value
+  def get(mod, key, default \\ nil, opts \\ []) do
+    case fetch(mod, key, default, opts) do
       {:ok, val} -> val
-      _ -> Keyword.get(opts, :default)
+      _ -> default
     end
   end
 
@@ -257,7 +261,7 @@ defmodule DataWorker do
 
     if file, do: cache_dump(bucket, file)
 
-    maybe_schedule_refresh(interval)
+    maybe_schedule_full_refresh(interval)
 
     :ok
   end
@@ -383,7 +387,7 @@ defmodule DataWorker do
 
       {:caught, type, error} ->
         Logger.warn("""
-        #{mod}.load(#{key}) error: #{inspect(type)}, #{inspect(error)}
+        #{mod}.load(#{inspect(key)}) error: #{inspect(type)}, #{inspect(error)}
         """)
 
         nil
