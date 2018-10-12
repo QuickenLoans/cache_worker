@@ -3,6 +3,8 @@ defmodule DataWorker.Bucket do
   The Bucket provides wrapper functionality around our data store, ETS.
   """
 
+  require Logger
+
   @type bucket :: atom
   @type key :: term
   @type value :: term
@@ -42,5 +44,33 @@ defmodule DataWorker.Bucket do
     end
   catch
     e in ArgumentError -> {:error, :no_bucket}
+  end
+
+  @doc """
+  Save some configuration. Probably only fails if called more than once for
+  the same bucket.
+  """
+  def store_config!(%{bucket: bucket} = config) do
+    c_bucket = :"#{bucket}_config"
+
+    try
+      :ok = new(c_bucket)
+    catch
+      e in ArgumentError ->
+        Logger.warn("""
+        Perhaps &store_config!/1 was already called for #{bucket}? \
+        Saving config anyhow...
+        """)
+    end
+
+    store(c_bucket, nil, config)
+  end
+
+  def config(bucket) do
+    with {:ok, config} <- fetch(bucket, :"#{bucket}_config") do
+      config
+    else
+      _ -> nil
+    end
   end
 end

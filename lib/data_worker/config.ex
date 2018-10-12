@@ -3,8 +3,8 @@ defmodule DataWorker.Config do
   Holds the `DataWorker` configuration
 
   * `:bucket` - The namespace (atom) for the cache store.
-  * `:cache_enabled` - Boolean indicating if caching is enabled. Defaults to
-    `true`.
+  * `:bucket_enabled` - Boolean indicating if caching is enabled. If disabled,
+    all `&get/1` and `&fetch/1` calls will call `&load/1`. Defaults to `true`.
   * `:file` - Full path and filename where we should save the cache to
     whenever it is updated. If `nil`, this functionality is disabled. If
     defined, the data will be used to seed the cache on start.
@@ -19,10 +19,11 @@ defmodule DataWorker.Config do
     is based on.
   """
 
+  alias DataWorker.Bucket
   require Logger
 
   defstruct mod: nil,
-            cache_enabled: true,
+            bucket_enabled: true,
             bucket: nil,
             file: nil,
             refresh_interval: 900,
@@ -30,7 +31,7 @@ defmodule DataWorker.Config do
 
   @type t :: %__MODULE__{
           mod: module,
-          cache_enabled: boolean,
+          bucket_enabled: boolean,
           bucket: String.t(),
           file: String.t(),
           refresh_interval: integer,
@@ -48,19 +49,9 @@ defmodule DataWorker.Config do
     |> normalize_mod!(mod)
     |> maybe_add_config_fn()
     |> normalize_bucket!()
-    |> normalize_cache_enabled()
+    |> normalize_bucket_enabled()
     |> normalize_file()
     |> normalize_refresh_interval()
-  end
-
-  @doc "Ensure the `%DataWorker.Config{}` gets saved to the bucket."
-  @spec save_config_to_bucket!(t) :: :ok | no_return
-  def save_config_to_bucket!(config) do
-    case Cachex.put(config.bucket, :__config__, config) do
-      {:ok, true} -> :ok
-      {:error, :no_cache} -> raise "No cache for #{config.bucket}"
-      wat -> raise "Unknown return from Cachex.put: #{inspect(wat)}"
-    end
   end
 
   defp maybe_add_config_fn(%{config_fn: fun} = c) when is_function(fun) do
@@ -105,8 +96,8 @@ defmodule DataWorker.Config do
     end
   end
 
-  defp normalize_cache_enabled(c) do
-    %{c | cache_enabled: c.cache_enabled == true}
+  defp normalize_bucket_enabled(c) do
+    %{c | bucket_enabled: c.bucket_enabled == true}
   end
 
   defp normalize_file(%{file: "/" <> _} = c), do: c
