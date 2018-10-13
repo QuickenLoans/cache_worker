@@ -130,7 +130,7 @@ defmodule DataWorker do
       end
 
       @doc "Returns a particular value from the config"
-      @spec config(key, term) :: term
+      @spec config(DataWorker.key(), term) :: term
       def config(key, default \\ nil) do
         Map.get(config(), key, default)
       end
@@ -166,7 +166,7 @@ defmodule DataWorker do
         do: DataWorker.get(__MODULE__, key, default, opts)
 
       @doc "Gets a list of all keys in a given bucket."
-      @spec keys :: [key]
+      @spec keys :: [DataWorker.key()]
       def keys, do: Bucket.keys(unquote(Keyword.get(use_opts, :bucket)))
 
       @doc """
@@ -176,7 +176,7 @@ defmodule DataWorker do
       """
       @spec load(DataWorker.key()) ::
               {:ok, DataWorker.value()} | {:error, String.t()}
-      def load(key), do: raise("#{__MODULE__} does not implement `&load/1`!")
+      def load(_key), do: raise("#{__MODULE__} does not implement `&load/1`!")
 
       defoverridable init: 1, load: 1, full_refresh: 0
     end
@@ -277,7 +277,7 @@ defmodule DataWorker do
     Bucket.set(bucket, key, val)
   end
 
-  defp do_fetch(%{bucket_enabled: false} = config, key) do
+  defp do_fetch(%{cache_enabled: false} = config, key) do
     run_load(config, key)
   end
 
@@ -443,7 +443,7 @@ defmodule DataWorker do
     end
   end
 
-  @spec maybe_load_file(bucket, String.t | nil) :: boolean
+  @spec maybe_load_file(bucket, String.t() | nil) :: boolean
   defp maybe_load_file(bucket, file) when byte_size(file) > 0 do
     case Bucket.load(bucket, file) do
       {:ok, bucket} ->

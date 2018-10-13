@@ -3,7 +3,7 @@ defmodule DataWorker.Config do
   Holds the `DataWorker` configuration
 
   * `:bucket` - The namespace (atom) for the cache store.
-  * `:bucket_enabled` - Boolean indicating if caching is enabled. If disabled,
+  * `:cache_enabled` - Boolean indicating if caching is enabled. If disabled,
     all `&get/1` and `&fetch/1` calls will call `&load/1`. Defaults to `true`.
   * `:file` - Full path and filename where we should save the cache to
     whenever it is updated. If `nil`, this functionality is disabled. If
@@ -22,7 +22,7 @@ defmodule DataWorker.Config do
   require Logger
 
   defstruct mod: nil,
-            bucket_enabled: true,
+            cache_enabled: true,
             bucket: nil,
             file: nil,
             refresh_interval: 900,
@@ -30,7 +30,7 @@ defmodule DataWorker.Config do
 
   @type t :: %__MODULE__{
           mod: module,
-          bucket_enabled: boolean,
+          cache_enabled: boolean,
           bucket: String.t(),
           file: String.t(),
           refresh_interval: integer,
@@ -46,34 +46,30 @@ defmodule DataWorker.Config do
     __MODULE__
     |> struct(opts)
     |> normalize_mod!(mod)
-    |> maybe_add_config_fn()
+    |> maybe_add_config_fn!()
     |> normalize_bucket!()
-    |> normalize_bucket_enabled()
-    |> normalize_file()
-    |> normalize_refresh_interval()
+    |> normalize_cache_enabled()
+    |> normalize_file!()
+    |> normalize_refresh_interval!()
   end
 
-  defp maybe_add_config_fn(%{config_fn: fun} = c) when is_function(fun) do
+  defp maybe_add_config_fn!(%{config_fn: fun} = c) when is_function(fun) do
     opts_from_fn = fun.()
 
     if Keyword.keyword?(opts_from_fn) do
       struct(c, opts_from_fn)
     else
-      Logger.warn("""
-      Expected keyword list from #{c.mod}'s config_fn, #{inspect(fun)}, got \
-      #{inspect(opts_from_fn)}. Carrying on anyway.\
-      """)
-
-      c
+      raise """
+      Expected keyword list from #{c.mod}'s config_fn, #{inspect(fun)} \
+      got #{inspect(opts_from_fn)}!\
+      """
     end
   end
 
-  defp maybe_add_config_fn(%{config_fn: fun} = c) when not is_nil(fun) do
-    Logger.warn("#{c.mod} has bad config_fn setting: #{inspect(fun)}")
-    c
-  end
+  defp maybe_add_config_fn!(%{config_fn: nil} = c), do: c
 
-  defp maybe_add_config_fn(c), do: c
+  defp maybe_add_config_fn!(%{config_fn: bad} = c),
+    do: raise("#{c.mod} has bad config_fn setting: #{inspect(bad)}")
 
   defp normalize_mod!(c, mod) do
     case function_exported?(mod, :__info__, 1) do
@@ -84,38 +80,33 @@ defmodule DataWorker.Config do
 
   defp normalize_bucket!(c) do
     case Map.fetch(c, :bucket) do
-      {:ok, bucket} when is_atom(bucket) ->
+      {:ok, bucket} when is_atom(bucket) and not is_nil(bucket) ->
         %{c | bucket: bucket}
 
       {:ok, bad} ->
         raise("Bad bucket name for #{c.mod}: #{bad}")
-
-      :error ->
-        raise("Bucket name not defined for #{c.mod}")
     end
   end
 
-  defp normalize_bucket_enabled(c) do
-    %{c | bucket_enabled: c.bucket_enabled == true}
+  defp normalize_cache_enabled(c) do
+    %{c | cache_enabled: c.cache_enabled == true}
   end
 
-  defp normalize_file(%{file: "/" <> _} = c), do: c
+  defp normalize_file!(%{file: file} = c)
+       when is_nil(file) or byte_size(file) > 0,
+       do: c
 
-  defp normalize_file(%{file: nil} = c), do: c
-
-  defp normalize_file(%{file: wat} = c) do
-    Logger.warn("Weird :file value for #{c.mod}: #{wat}")
-    c
+  defp normalize_file!(%{file: wat} = c) do
+    raise("Unrecognized file for #{c.mod}: #{inspect(wat)}")
   end
 
-  defp normalize_refresh_interval(%{refresh_interval: nil} = c), do: c
+  defp normalize_refresh_interval!(%{refresh_interval: nil} = c), do: c
 
-  defp normalize_refresh_interval(%{refresh_interval: int} = c)
+  defp normalize_refresh_interval!(%{refresh_interval: int} = c)
        when is_integer(int) and int >= 0,
        do: c
 
-  defp normalize_refresh_interval(%{refresh_interval: wat} = c) do
-    Logger.warn("Weird :refresh_interval value for #{c.mod}: #{wat}")
-    c
+  defp normalize_refresh_interval!(%{refresh_interval: wat} = c) do
+    raise("Weird :refresh_interval value for #{c.mod}: #{wat}")
   end
 end
