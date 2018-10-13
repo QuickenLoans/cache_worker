@@ -8,7 +8,7 @@ defmodule DataWorker.MixProject do
       elixir: "~> 1.7",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      aliases: aliases(),
+      aliases: aliases()
     ]
   end
 
@@ -23,13 +23,13 @@ defmodule DataWorker.MixProject do
   defp deps do
     [
       {:credo, "~> 0.9.1", only: [:dev, :test]},
-      {:cachex, "~> 3.0"},
+      {:cachex, "~> 3.0"}
     ]
   end
 
   defp aliases do
     [
-      lint: "credo --strict",
+      lint: "credo --strict"
     ]
   end
 end

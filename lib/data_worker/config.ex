@@ -19,7 +19,6 @@ defmodule DataWorker.Config do
     is based on.
   """
 
-  alias DataWorker.Bucket
   require Logger
 
   defstruct mod: nil,
