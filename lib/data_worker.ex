@@ -198,7 +198,7 @@ defmodule DataWorker do
 
     # Skip init if we load a cache file
     ret =
-      if maybe_load_file(config.file) do
+      if maybe_load_file(config.bucket, config.file) do
         :ok
       else
         {config.mod, :init, [config]}
@@ -271,10 +271,10 @@ defmodule DataWorker do
     Bucket.get(bucket, key)
   end
 
-  @doc "Store a value directly into the cache (bucket)"
-  @spec direct_store(bucket, key, value) :: :ok | :no_bucket
-  def direct_store(bucket, key, val) do
-    Bucket.store(bucket, key, val)
+  @doc "Set a value directly into the cache (bucket)"
+  @spec direct_set(bucket, key, value) :: :ok | :no_bucket
+  def direct_set(bucket, key, val) do
+    Bucket.set(bucket, key, val)
   end
 
   defp do_fetch(%{bucket_enabled: false} = config, key) do
@@ -396,7 +396,7 @@ defmodule DataWorker do
   # Save a value to the bucket; log errors
   @spec save_value(module, key, value) :: :ok
   defp save_value(%{bucket: bucket}, key, val) do
-    case Bucket.store(bucket, key, val) do
+    case Bucket.set(bucket, key, val) do
       {:ok, true} ->
         :ok
 
@@ -443,11 +443,9 @@ defmodule DataWorker do
     end
   end
 
-  @spec maybe_load_file(boolean) :: boolean
-  defp maybe_load_file(nil), do: false
-
-  defp maybe_load_file(file) when byte_size(file) > 0 do
-    case Bucket.load(file) do
+  @spec maybe_load_file(bucket, String.t | nil) :: boolean
+  defp maybe_load_file(bucket, file) when byte_size(file) > 0 do
+    case Bucket.load(bucket, file) do
       {:ok, bucket} ->
         Logger.debug(fn ->
           {:ok, keys} = Bucket.keys(bucket)
@@ -461,6 +459,8 @@ defmodule DataWorker do
         false
     end
   end
+
+  defp maybe_load_file(_, _), do: false
 
   # Get the module name for which this instance of DataWorker is running
   @spec this_worker_module :: module
