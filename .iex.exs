@@ -23,6 +23,16 @@ defmodule T do
     write_concurrency: true
   ]
 
+  def d do
+    bucket = :d
+    :ets.new(bucket, @ets_table_options)
+    B.store(bucket, :a, 1)
+    B.store(bucket, :b, 2)
+    B.store(bucket, :c, 3)
+    :ets.tab2list(bucket) |> IO.inspect()
+    :ets.tab2file(bucket, '/tmp/gg')
+  end
+
   def x do
     bucket = :x
     :ets.new(bucket, @ets_table_options)

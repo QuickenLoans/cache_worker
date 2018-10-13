@@ -22,8 +22,7 @@ defmodule DataWorker.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:credo, "~> 0.9.1", only: [:dev, :test]},
-      {:cachex, "~> 3.0"}
+      {:credo, "~> 0.9.1", only: [:dev, :test]}
     ]
   end
 
