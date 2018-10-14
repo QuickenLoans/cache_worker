@@ -15,36 +15,6 @@ defmodule DataWorker.Bucket do
     write_concurrency: true
   ]
 
-  @cache_bucket_config_key nil
-
-  @doc """
-  Sets up the ETS tables for a new bucket.
-
-  `%DataWorker.Config{}` is recommended as the argument, but only a map is
-  required. For bucket `:foo`, the following tables are created:
-
-    1. `:foo` to store the data
-    2. `:foo_config` to store the `%DataWorker.Config{}`
-  """
-  @spec init_bucket(map) :: :ok
-  def init_bucket(%{bucket: bucket} = config) do
-    c_table = :"#{bucket}_config"
-    :ok = new(bucket)
-    :ok = new(c_table)
-    :ok = set(c_table, @cache_bucket_config_key, config)
-  end
-
-  @spec delete_bucket(bucket) :: :ok | :no_bucket
-  def delete_bucket(bucket) do
-    with c_table <- :"#{bucket}_config",
-         :ok <- delete(bucket),
-         :ok <- delete(c_table) do
-      :ok
-    else
-      :no_table -> :no_bucket
-    end
-  end
-
   @doc "Create a new table, wiping out an existing table if needed."
   @spec new(bucket) :: :ok
   def new(table) do
@@ -100,9 +70,9 @@ defmodule DataWorker.Bucket do
   end
 
   @doc "Get a list of all keys in a given bucket."
-  @spec keys(bucket) :: [key] | :no_bucket
+  @spec keys(bucket) :: {:ok, [key]} | :no_bucket
   def keys(bucket) do
-    bucket |> key_stream() |> Enum.map(& &1)
+    {:ok, bucket |> key_stream() |> Enum.map(& &1)}
   catch
     :error, :badarg -> :no_bucket
   end
@@ -129,17 +99,14 @@ defmodule DataWorker.Bucket do
   end
 
   @doc """
-  Load a bucket's dump file back into memory, clobbering any existing bucket
-  of the same name.
+  Load a bucket's dump file back into memory.
 
-  An error will result from dumping a bucket with one name and loading it
-  with another.
+  An error will result if a table of the same name already exists. The
+  operation will also fail if the file was saved with one bucket name and
+  loaded it with another.
   """
   @spec load(bucket, String.t()) :: :ok | {:error, term}
   def load(bucket, file) do
-    # Just in case
-    delete(bucket)
-
     case :ets.file2tab(String.to_charlist(file)) do
       {:ok, ^bucket} ->
         :ok
@@ -150,9 +117,5 @@ defmodule DataWorker.Bucket do
       {:error, err} ->
         {:error, err}
     end
-  end
-
-  def config(bucket) do
-    get(:"#{bucket}_config", @cache_bucket_config_key)
   end
 end

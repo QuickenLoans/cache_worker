@@ -3,50 +3,20 @@ alias DataWorker.Bucket, as: B
 alias DataWorker.Config, as: C
 
 defmodule T do
-  def t do
-    B.new(:t)
-
-    B.store(:t, :a, :A)
-    B.store(:t, :b, :B)
-    B.store(:t, :c, :C)
-  end
-
-  def k do
-    B.keys(:t)
-  end
-
-  @ets_table_options [
-    :set,
-    :public,
-    :named_table,
-    read_concurrency: true,
-    write_concurrency: true
-  ]
-
-  def d do
-    bucket = :d
-    :ets.new(bucket, @ets_table_options)
-    B.store(bucket, :a, 1)
-    B.store(bucket, :b, 2)
-    B.store(bucket, :c, 3)
-    :ets.tab2list(bucket) |> IO.inspect()
-    :ets.tab2file(bucket, '/tmp/gg')
-  end
-
-  def x do
-    bucket = :x
-    :ets.new(bucket, @ets_table_options)
-    :ets.new(bucket, @ets_table_options)
-  catch
-    a, b -> IO.inspect({a, b})
-  end
-
-  def y do
-    bucket = :y
-    :ets.new(bucket, @ets_table_options)
-    B.store(bucket, :a, 1)
-    B.store(bucket, :a, 1)
-  catch
-    a, b -> IO.inspect({a, b})
+  def launch(mod) do
+    {m, f, a} = Map.get(mod.child_spec(:_), :start)
+    apply(m, f, a)
   end
 end
+
+# defmodule Basic do
+#   use DataWorker, bucket: :basic
+
+#   def init(_) do
+#     {:ok, %{seeded: "on init"}}
+#   end
+
+#   def load(input) do
+#     {:ok, "The value for #{input}"}
+#   end
+# end

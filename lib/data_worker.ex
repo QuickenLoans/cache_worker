@@ -49,8 +49,6 @@ defmodule DataWorker do
           --> `&load("key")` => `{:error, "Something went wrong!"}`
               --> `{:ok, "Some data!"}`
                   --> *Saved to the cache* => `{:ok, "Some data!"}`
-                      --> Data passed to `:return_fn`, if defined
-                          => {:ok, "New value from return_fn"}
 
   ## Options for `use DataWorker`
 
@@ -72,13 +70,11 @@ defmodule DataWorker do
   These functions allow access to the data in the data worker. The following
   options are available:
 
-  * `:return_fn` - When defined as a function, it will be invoked after the
-    value is gotten successfully (whether from the cache or via `&load/1`). The
-    key and value are passed into this function, and the result will become
-    the final return to the caller. This allows the caller to execute some
-    code and return a new value to the caller, without affecting the cache
-    itself. This also means that crashes will not affect the caching of the
-    data.
+  * `:skip_save` - When set to `true` and `&load/1` is invoked to load a value,
+    that value will not be saved to the cache. Instead, it's expected that the
+    calling code will manually do this via `&direct_set(key, value)`. This is
+    useful if the new data needs to be tested in a pipeline before committed to
+    the cache. Once confirmed, the value can be inserted via `&direct_set/2`.
   """
 
   use GenServer
@@ -92,7 +88,7 @@ defmodule DataWorker do
   @type init_return ::
           {:ok, map} | :ok | {:warn, String.t()} | {:stop, String.t()}
   @type load_return :: {:ok, value} | {:error, String.t()}
-  @type fetch_return :: {:ok, value} | :no_bucket
+  @type fetch_return :: {:ok, value} | {:error, String.t()} | :no_bucket
 
   @doc "Returns the child_spec which should be used by the supervisor"
   @callback child_spec(keyword) :: Supervisor.child_spec()
@@ -100,7 +96,11 @@ defmodule DataWorker do
   @doc "Give a DataWorker the opportunity to settle in"
   @callback init(Config.t()) :: init_return
 
-  @doc "Actually procure the value for a key"
+  @doc """
+  Do the work to procure the value for a given key.
+
+  This callback is intended only for internal use.
+  """
   @callback load(key) :: load_return
 
   @doc "Invoked on the `:refresh_interval` when the cache should be refreshed"
@@ -110,6 +110,8 @@ defmodule DataWorker do
     # Compile-time check with friendly reminder
     is_atom(Keyword.get(use_opts, :bucket, "not atom")) ||
       raise ":bucket option must be defined directly in the use options!"
+
+    bucket = Keyword.get(use_opts, :bucket)
 
     quote do
       alias DataWorker.Bucket
@@ -124,13 +126,22 @@ defmodule DataWorker do
       end
 
       @doc "Returns the `%DataWorker.Config{}`"
-      @spec config :: Config.t()
+      @spec config :: Config.t() | no_return
       def config do
-        Bucket.config(unquote(Keyword.get(use_opts, :bucket)))
+        case Bucket.get(unquote(:"#{bucket}_config"), nil) do
+          %Config{} = config ->
+            config
+
+          nil ->
+            raise """
+            No config available for #{unquote(bucket)} bucket. \
+            Did you forget to start its DataWorker?\
+            """
+        end
       end
 
       @doc "Returns a particular value from the config"
-      @spec config(DataWorker.key(), term) :: term
+      @spec config(DataWorker.key(), term) :: term | no_return
       def config(key, default \\ nil) do
         Map.get(config(), key, default)
       end
@@ -161,24 +172,23 @@ defmodule DataWorker do
       def fetch(key, opts \\ []), do: DataWorker.fetch(__MODULE__, key, opts)
 
       @doc "Gets the value for a specific key in the bucket."
-      @spec get(DataWorker.key(), DataWorker.value(), DataWorker.opts()) :: term
-      def get(key, default \\ nil, opts \\ []),
-        do: DataWorker.get(__MODULE__, key, default, opts)
+      @spec get(DataWorker.key(), DataWorker.opts()) :: term
+      def get(key, opts \\ []),
+        do: DataWorker.get(__MODULE__, key, opts)
+
+      @doc "Set a key/val in the bucket directly"
+      @spec direct_get(DataWorker.key()) :: term
+      def direct_get(key), do: DataWorker.direct_get(__MODULE__, key)
+
+      @doc "Get a key/val from the bucket directly"
+      @spec direct_set(DataWorker.key(), DataWorker.value()) :: :ok | :no_bucket
+      def direct_set(key, val), do: DataWorker.direct_set(__MODULE__, key, val)
 
       @doc "Gets a list of all keys in a given bucket."
       @spec keys :: [DataWorker.key()]
-      def keys, do: Bucket.keys(unquote(Keyword.get(use_opts, :bucket)))
+      def keys, do: Bucket.keys(unquote(bucket))
 
-      @doc """
-      Do the work to procure the value for a given key.
-
-      This callback is intended only for internal use.
-      """
-      @spec load(DataWorker.key()) ::
-              {:ok, DataWorker.value()} | {:error, String.t()}
-      def load(_key), do: raise("#{__MODULE__} does not implement `&load/1`!")
-
-      defoverridable init: 1, load: 1, full_refresh: 0
+      defoverridable init: 1, full_refresh: 0
     end
   end
 
@@ -188,34 +198,43 @@ defmodule DataWorker do
   end
 
   @doc false
-  def start_link(config) do
-    GenServer.start_link(__MODULE__, config, name: config.mod)
+  def start_link(mod, use_opts) do
+    GenServer.start_link(__MODULE__, {mod, use_opts}, name: mod)
   end
 
   @doc false
-  def init(%Config{} = config) do
-    Bucket.init_bucket(config)
+  def init({mod, use_opts}) do
+    %{bucket: bucket} = config = Config.normalize!(mod, use_opts)
 
     # Skip init if we load a cache file
-    ret =
-      if maybe_load_file(config.bucket, config.file) do
-        :ok
-      else
-        {config.mod, :init, [config]}
-        |> invoke_carefully()
-        |> handle_init_ret(config)
-      end
+    if maybe_load_file(bucket, config.file) do
+      :ok
+    else
+      :ok = Bucket.new(bucket)
 
-    with :ok <- ret do
-      schedule_full_refresh(config.refresh_interval)
-
-      Logger.debug(fn ->
-        l = config |> Map.from_struct() |> Enum.into([])
-        "#{config.bucket}: Initialized DataWorker: #{inspect(l)}"
-      end)
+      {config.mod, :init, [config]}
+      |> invoke_carefully()
+      |> handle_init_ret(config)
     end
+    |> case do
+      :ok ->
+        c_table = :"#{bucket}_config"
+        :ok = Bucket.new(c_table)
+        :ok = Bucket.set(c_table, nil, config)
 
-    {:ok, nil}
+        schedule_full_refresh(config.refresh_interval)
+
+        Logger.debug(fn ->
+          l = config |> Map.from_struct() |> Enum.into([])
+          "#{bucket}: Initialized DataWorker: #{inspect(l)}"
+        end)
+
+        {:ok, nil}
+
+      {:stop, msg} ->
+        Bucket.delete(bucket)
+        {:stop, msg}
+    end
   end
 
   @doc "Handle the signal to refresh the cache"
@@ -227,34 +246,28 @@ defmodule DataWorker do
   @doc "Fetch a value from the DataWorker"
   @spec fetch(module, key, opts) :: fetch_return
   def fetch(mod, key, opts \\ []) do
-    with {:ok, value} <- do_fetch(mod.config(), key),
-         fun when is_function(fun) <-
-           Keyword.get(opts, :return_fn, {:ok, value}) do
-      fun.(key, value)
-    end
+    do_fetch(mod.config(), key, opts)
   end
 
   @doc "Get a value from the DataWorker"
-  @spec get(module, key, value, opts) :: value
-  def get(mod, key, default \\ nil, opts \\ []) do
+  @spec get(module, key, opts) :: value | nil
+  def get(mod, key, opts \\ []) do
     case fetch(mod, key, opts) do
       {:ok, val} -> val
-      _ -> default
+      {:error, _} -> nil
     end
   end
 
   @doc "Handle the refreshing of all keys for a given worker module"
-  @spec full_refresh(module) :: :ok
+  @spec full_refresh(module) :: :ok | no_return
   def full_refresh(mod) do
     %{bucket: bucket} = config = mod.config()
 
-    case Bucket.keys(bucket) do
-      {:ok, keys} ->
-        refresh_for_keys(config, keys)
+    {:ok, keys} = Bucket.keys(bucket)
 
-      :no_bucket ->
-        Logger.error("#{bucket} bucket doesn't seem to exist!")
-    end
+    Logger.info("refreshing #{inspect(config)}, #{inspect(keys)}")
+
+    refresh_for_keys(config, keys)
 
     file_dump(bucket, config.file)
 
@@ -277,13 +290,15 @@ defmodule DataWorker do
     Bucket.set(bucket, key, val)
   end
 
-  defp do_fetch(%{cache_enabled: false} = config, key) do
-    run_load(config, key)
+  defp do_fetch(%{cache_enabled: false} = config, key, opts) do
+    run_load(config, key, opts)
   end
 
-  defp do_fetch(%{bucket: bucket} = config, key) do
-    with :undefined <- Bucket.fetch(bucket, key) do
-      run_load(config, key)
+  defp do_fetch(%{bucket: bucket} = config, key, opts) do
+    with :undefined <- Bucket.fetch(bucket, key),
+         {:ok, val} <- run_load(config, key, opts) do
+      file_dump(bucket, config.file)
+      {:ok, val}
     end
   end
 
@@ -313,14 +328,17 @@ defmodule DataWorker do
 
       {:caught, type, error} ->
         Logger.warn(fn ->
-          "#{config.mod}.init error: #{inspect(type)}, #{inspect(error)}"
+          "#{config.mod}.init #{inspect(type)}, #{inspect(error)}"
         end)
 
         :ok
 
       wat ->
-        {:stop,
-         "Unrecognized `&init/1` return from #{config.mod}: #{inspect(wat)}"}
+        Logger.warn(fn ->
+          "Unrecognized `&init/1` return from #{config.mod}: #{inspect(wat)}"
+        end)
+
+        :ok
     end
   end
 
@@ -359,15 +377,13 @@ defmodule DataWorker do
       {:ok, val} ->
         Logger.debug(fn ->
           ins = inspect(val, limit: 2, printable_limit: 100)
-          "#{bucket}:#{inspect(key)}: Loaded: #{ins}"
+          "Loaded #{bucket}[#{inspect(key)}]: #{ins}"
         end)
 
-        opts |> Keyword.get(:return_fn) |> maybe_call_fn([key, val])
-        save_value(config, key, val)
+        unless Keyword.get(opts, :skip_save?), do: save_value(config, key, val)
         {:ok, val}
 
       {:ok, val, map} when is_map(map) ->
-        opts |> Keyword.get(:return_fn) |> maybe_call_fn([key, val])
         store_map_into_cache(config, map)
         {:ok, val}
 
@@ -379,6 +395,16 @@ defmodule DataWorker do
       {:caught, type, error} ->
         msg = """
         #{mod}.load(#{inspect(key)}) error: #{inspect(type)}, #{inspect(error)}
+        """
+
+        Logger.warn(msg)
+
+        {:error, msg}
+
+      woah ->
+        msg = """
+        Something invalid was returned from \
+        #{mod}.load(#{inspect(key)}): #{inspect(woah)}\
         """
 
         Logger.warn(msg)
@@ -397,11 +423,11 @@ defmodule DataWorker do
   @spec save_value(module, key, value) :: :ok
   defp save_value(%{bucket: bucket}, key, val) do
     case Bucket.set(bucket, key, val) do
-      {:ok, true} ->
+      :ok ->
         :ok
 
-      :bucket_exists ->
-        Logger.error("#{bucket}:#{key}: No cache found, trying to save value")
+      :no_bucket ->
+        Logger.error("#{bucket}:#{key}: Tried to save value, but no bucket!")
         :ok
     end
   end
@@ -429,7 +455,7 @@ defmodule DataWorker do
 
   defp file_dump(bucket, file) do
     case Bucket.dump(bucket, file) do
-      {:ok, true} ->
+      :ok ->
         Logger.debug(fn ->
           {:ok, keys} = Bucket.keys(bucket)
           "#{bucket}: Saved bucket to disk with #{length(keys)} keys"
@@ -437,8 +463,8 @@ defmodule DataWorker do
 
         :ok
 
-      {:error, error} ->
-        Logger.error("#{bucket}: Failed to dump bucket: #{error}")
+      {:error, msg} ->
+        Logger.error("#{bucket}: Failed to dump bucket: #{inspect(msg)}")
         :ok
     end
   end
@@ -446,7 +472,7 @@ defmodule DataWorker do
   @spec maybe_load_file(bucket, String.t() | nil) :: boolean
   defp maybe_load_file(bucket, file) when byte_size(file) > 0 do
     case Bucket.load(bucket, file) do
-      {:ok, bucket} ->
+      :ok ->
         Logger.debug(fn ->
           {:ok, keys} = Bucket.keys(bucket)
           "#{bucket}: Loaded cache file with #{length(keys)} keys"
@@ -455,7 +481,10 @@ defmodule DataWorker do
         true
 
       {:error, msg} ->
-        Logger.warn("Failed to load cache file: #{file}: #{inspect(msg)}")
+        Logger.warn("""
+        #{bucket}: Failed loading cache file: #{file}: #{inspect(msg)}\
+        """)
+
         false
     end
   end
@@ -469,7 +498,7 @@ defmodule DataWorker do
   end
 
   defp schedule_full_refresh(interval) when interval > 0 do
-    Process.send_after(self(), :refresh, interval * 1_000)
+    Process.send_after(self(), :full_refresh, Kernel.trunc(interval * 1_000))
   end
 
   defp schedule_full_refresh(_), do: nil

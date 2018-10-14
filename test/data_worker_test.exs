@@ -1,11 +1,179 @@
-defmodule DataWorkerTest do
-  @moduledoc false
-  use ExUnit.Case
-  doctest DataWorker
-  import ExUnit.CaptureLog
-  #assert capture_log(fn) =~ "txt"
+defmodule SuperBasic do
+  use DataWorker, bucket: :super_basic
+  def load(_), do: nil
+end
 
-  # test "greets the world" do
-  #   assert DataWorker.hello() == :world
-  # end
+defmodule Basic do
+  use DataWorker, bucket: :basic
+
+  def init(_) do
+    {:ok, %{seeded: "on init"}}
+  end
+
+  def load(input) do
+    {:ok, "The value for #{input}"}
+  end
+end
+
+defmodule InitMap do
+  use DataWorker, bucket: :init_map
+  def init(_), do: {:ok, %{x: 1, y: 2, z: 3}}
+  def load(_), do: nil
+end
+
+defmodule InitWarn do
+  use DataWorker, bucket: :init_warn
+  def init(_), do: {:warn, "Careful, mate!"}
+  def load(_), do: nil
+end
+
+defmodule InitStop do
+  use DataWorker, bucket: :init_stop
+  def init(_), do: {:stop, "Oh damn"}
+  def load(_), do: nil
+end
+
+defmodule InitRaise do
+  use DataWorker, bucket: :init_stop
+  def init(_), do: raise("Crap!!")
+  def load(_), do: nil
+end
+
+defmodule LoadMap do
+  use DataWorker, bucket: :load_map
+  def load(:b), do: {:ok, 2, %{a: 1, b: 2, c: 3}}
+end
+
+defmodule LoadRaise do
+  use DataWorker, bucket: :load_raise
+  def load(:r), do: raise("It broke")
+end
+
+defmodule WithFile do
+  use DataWorker, bucket: :wfile, file: "/tmp/dataworker-bucket-wfile"
+  def load(input), do: {:ok, "blah, #{input}"}
+end
+
+defmodule FullRefresher do
+  use DataWorker, bucket: :full_refresher, refresh_interval: 0.02
+  require Logger
+
+  def load(input) do
+    Logger.info("loading #{inspect(input)}")
+    {:ok, nil}
+  end
+end
+
+defmodule DataWorkerTest do
+  use ExUnit.Case
+  alias DataWorker.{Bucket, Config}
+  import ExUnit.CaptureLog
+  import CompileTimeAssertions
+  doctest DataWorker
+
+  test "basic" do
+    launch(Basic)
+    assert "The value for foo" == Basic.get(:foo)
+    assert {:ok, "The value for bar"} == Basic.fetch(:bar)
+    assert "on init" == Basic.get(:seeded)
+    assert {:ok, [:bar, :foo, :seeded]} = Basic.keys()
+    assert %Config{} = Basic.config()
+    assert :basic == Basic.config(:bucket)
+  end
+
+  test "bad things" do
+    assert_raise RuntimeError, fn -> SuperBasic.config() end
+    assert_raise RuntimeError, fn -> SuperBasic.config(:hi) end
+
+    assert_raise RuntimeError, fn ->
+      SuperBasic.get(:hi, :failsauce)
+    end
+  end
+
+  test "dump file" do
+    file = "/tmp/dataworker-bucket-wfile"
+    File.rm(file)
+    Process.flag(:trap_exit, true)
+    {:ok, pid} = launch(WithFile)
+    assert {:ok, "blah, one"} == WithFile.fetch("one")
+    assert {:ok, "blah, two"} == WithFile.fetch("two")
+    kill_and_wait(pid)
+    Bucket.delete(:wfile)
+    Bucket.delete(:wfile_config)
+    launch(WithFile)
+    assert {:ok, "blah, one"} == WithFile.fetch("one")
+    assert {:ok, ~w(two one)} == WithFile.keys()
+    File.rm(file)
+  end
+
+  test "init: map" do
+    launch(InitMap)
+    assert {:ok, ~w(x y z)a} == InitMap.keys()
+  end
+
+  test "init: warn" do
+    assert capture_log(fn ->
+             launch(InitWarn)
+           end) =~ "InitWarn warns: Careful, mate!"
+  end
+
+  test "init: stop" do
+    {:error, "Oh damn"} = launch(InitStop)
+  end
+
+  test "init: raise" do
+    assert capture_log(fn ->
+             launch(InitRaise)
+           end) =~ ~s/InitRaise.init :error, %RuntimeError{message: "Crap!!"}/
+  end
+
+  test "load: map" do
+    launch(LoadMap)
+    assert {:ok, 2} == LoadMap.fetch(:b)
+    assert {:ok, ~w(a b c)a} == LoadMap.keys()
+  end
+
+  test "load: raise" do
+    launch(LoadRaise)
+    assert capture_log(fn -> LoadRaise.fetch(:r) end) =~ ~s/"It broke"/
+  end
+
+  test "full refresh" do
+    launch(FullRefresher)
+    assert nil == FullRefresher.get(:a)
+    assert nil == FullRefresher.get(:b)
+    assert nil == FullRefresher.get(:c)
+    :timer.sleep(10)
+    log = capture_log(fn ->
+      :timer.sleep(40)
+    end)
+    assert log =~ "loading :a"
+    assert log =~ "loading :b"
+    assert log =~ "loading :c"
+  end
+
+  test "using" do
+    assert_compile_time_raise(
+      RuntimeError,
+      ":bucket option must be defined directly in the use options!",
+      quote do
+        defmodule(Xx, do: use(DataWorker, bucket: "oh hell no"))
+      end
+    )
+  end
+
+  defp launch(mod) do
+    {m, f, a} = Map.get(mod.child_spec(:_), :start)
+    apply(m, f, a)
+  end
+
+  # Send a kill signal and wait for the process to be dead.
+  # Make sure you have `Process.flag(:trap_exit, true)`
+  defp kill_and_wait(pid) do
+    Process.exit(pid, :kill)
+
+    receive do
+      {:EXIT, ^pid, :killed} -> nil
+    end
+  end
 end

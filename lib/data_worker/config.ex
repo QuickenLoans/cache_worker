@@ -102,8 +102,8 @@ defmodule DataWorker.Config do
 
   defp normalize_refresh_interval!(%{refresh_interval: nil} = c), do: c
 
-  defp normalize_refresh_interval!(%{refresh_interval: int} = c)
-       when is_integer(int) and int >= 0,
+  defp normalize_refresh_interval!(%{refresh_interval: num} = c)
+       when is_number(num) and num >= 0,
        do: c
 
   defp normalize_refresh_interval!(%{refresh_interval: wat} = c) do
