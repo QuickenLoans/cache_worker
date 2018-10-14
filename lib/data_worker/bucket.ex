@@ -16,8 +16,8 @@ defmodule DataWorker.Bucket do
   ]
 
   @doc "Create a new table, wiping out an existing table if needed."
-  @spec new(bucket) :: :ok
-  def new(table) do
+  @spec ensure_new(bucket) :: :ok
+  def ensure_new(table) do
     ^table = :ets.new(table, @ets_table_options)
     :ok
   catch

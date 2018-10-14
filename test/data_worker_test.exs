@@ -3,18 +3,6 @@ defmodule SuperBasic do
   def load(_), do: nil
 end
 
-defmodule Basic do
-  use DataWorker, bucket: :basic
-
-  def init(_) do
-    {:ok, %{seeded: "on init"}}
-  end
-
-  def load(input) do
-    {:ok, "The value for #{input}"}
-  end
-end
-
 defmodule CacheDisabled do
   use DataWorker, bucket: :cache_disabled, cache_disabled: true
 
@@ -78,7 +66,8 @@ defmodule FullRefresher do
   use DataWorker, bucket: :full_refresher, refresh_interval: 0.02
   require Logger
 
-  def load(:x), do: raise "x bad!"
+  def load(:x), do: raise("x bad!")
+
   def load(input) do
     Logger.info("loading #{inspect(input)}")
     {:ok, nil}
@@ -87,19 +76,33 @@ end
 
 defmodule DataWorkerTest do
   use ExUnit.Case
-  alias DataWorker.{Bucket, Config}
+  alias DataWorker.Config
   import ExUnit.CaptureLog
   import CompileTimeAssertions
   doctest DataWorker
 
+  test "child_spec" do
+    opts =
+      [refresh_interval: 8, file: "scoar"]
+      |> FullRefresher.child_spec()
+      |> Map.get(:start)
+      |> elem(2)
+      |> Enum.slice(1, 1)
+      |> hd()
+
+    assert 8 == Keyword.get(opts, :refresh_interval)
+    assert "scoar" == Keyword.get(opts, :file)
+    assert :full_refresher == Keyword.get(opts, :bucket)
+  end
+
   test "basic" do
-    launch(Basic)
-    assert "The value for foo" == Basic.get(:foo)
-    assert {:ok, "The value for bar"} == Basic.fetch(:bar)
-    assert "on init" == Basic.get(:seeded)
-    assert {:ok, [:bar, :foo, :seeded]} = Basic.keys()
-    assert %Config{} = Basic.config()
-    assert :basic == Basic.config(:bucket)
+    launch(TestWorker)
+    assert "The value for foo" == TestWorker.get(:foo)
+    assert {:ok, "The value for bar"} == TestWorker.fetch(:bar)
+    assert "on init" == TestWorker.get(:seeded)
+    assert {:ok, [:bar, :foo, :seeded]} = TestWorker.keys()
+    assert %Config{} = TestWorker.config()
+    assert :test_worker == TestWorker.config(:bucket)
   end
 
   test "bad things" do
@@ -126,8 +129,7 @@ defmodule DataWorkerTest do
     assert {:ok, "blah, one"} == WithFile.fetch("one")
     assert {:ok, "blah, two"} == WithFile.fetch("two")
     kill_and_wait(pid)
-    Bucket.delete(:wfile)
-    Bucket.delete(:wfile_config)
+    # DataWorker.delete_tables(:wfile)
     launch(WithFile)
     assert {:ok, "blah, one"} == WithFile.fetch("one")
     assert {:ok, ~w(two one)} == WithFile.keys()
@@ -181,16 +183,14 @@ defmodule DataWorkerTest do
     assert nil == FullRefresher.get(:b)
     assert nil == FullRefresher.get(:c)
     :timer.sleep(10)
-    log = capture_log(fn ->
-      :timer.sleep(40)
-    end)
+
+    log = capture_log(fn -> :timer.sleep(40) end)
+
     assert log =~ "loading :a"
     assert log =~ "loading :b"
     assert log =~ "loading :c"
 
-    assert capture_log(fn ->
-      FullRefresher.get(:x)
-    end) =~ "x bad!"
+    assert capture_log(fn -> FullRefresher.get(:x) end) =~ "x bad!"
 
     assert :ok == FullRefresher.direct_set(:key, :val)
     assert :val == FullRefresher.direct_get(:key)
@@ -206,8 +206,8 @@ defmodule DataWorkerTest do
     )
   end
 
-  defp launch(mod) do
-    {m, f, a} = Map.get(mod.child_spec(:_), :start)
+  defp launch(mod, opts \\ []) do
+    {m, f, a} = Map.get(mod.child_spec(opts), :start)
     apply(m, f, a)
   end
 
@@ -217,7 +217,7 @@ defmodule DataWorkerTest do
     Process.exit(pid, :kill)
 
     receive do
-      {:EXIT, ^pid, :killed} -> nil
+      {:EXIT, ^pid, :killed} -> :burp
     end
   end
 end

@@ -4,20 +4,20 @@ defmodule DataWorker.BucketTest do
   import DataWorker.Bucket
 
   test "New table works" do
-    assert :ok == new(:a)
-    assert :ok == new(:a)
-    assert :ok == new(:a1)
+    assert :ok == ensure_new(:a)
+    assert :ok == ensure_new(:a)
+    assert :ok == ensure_new(:a1)
   end
 
   test "Buckets generally function" do
-    assert :ok == new(:b)
+    assert :ok == ensure_new(:b)
     assert :ok == set(:b, :key, "val!")
     assert "val!" == get(:b, :key)
     assert {:ok, "val!"} == fetch(:b, :key)
   end
 
   test "Negative cases" do
-    assert :ok == new(:c)
+    assert :ok == ensure_new(:c)
     assert :no_bucket == set(:x, "bla", "a value")
     assert nil == get(:x, "never set")
     assert :thanks == get(:x, "never set", :thanks)
@@ -26,7 +26,7 @@ defmodule DataWorker.BucketTest do
   end
 
   test "keys" do
-    assert :ok == new(:d)
+    assert :ok == ensure_new(:d)
     assert :ok == set(:d, "first", "the first one")
     assert :ok == set(:d, "second", "the second one")
     assert :ok == set(:d, "third", "the third one")
@@ -36,7 +36,7 @@ defmodule DataWorker.BucketTest do
   test "dump file and delete functionality" do
     file = "/tmp/dataworker-bucket-e"
     File.rm(file)
-    assert :ok == new(:e)
+    assert :ok == ensure_new(:e)
     assert :ok == set(:e, "one", "first one!")
     assert :ok == set(:e, "two", "second one!")
     assert :ok == set(:e, "three", "third one!")
@@ -44,7 +44,7 @@ defmodule DataWorker.BucketTest do
     assert "first one!" == get(:e, "one")
     assert :ok == delete(:e)
     assert nil == get(:e, "one")
-    assert :ok == new(:e)
+    assert :ok == ensure_new(:e)
     delete(:e)
     assert :ok == load(:e, file)
     assert "first one!" == get(:e, "one")
@@ -56,7 +56,7 @@ defmodule DataWorker.BucketTest do
   test "Import a dump file for a different name" do
     file = "/tmp/dataworker-bucket-f"
     File.rm(file)
-    assert :ok == new(:f)
+    assert :ok == ensure_new(:f)
     assert :ok == set(:f, :lorem, "ipsum")
     assert :ok == dump(:f, file)
     assert :ok == delete(:f)

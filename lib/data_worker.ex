@@ -59,8 +59,7 @@ defmodule DataWorker do
 
   * `%DataWorker.Config{}` struct defaults
   * Any options provided to `use`
-  * The `&data_worker_options/0` function. This one allows for options to be
-    specified at runtime.
+  * Any options provided to `&child_spec/1`. (eg: `{WidgetStore, file: "foo"}`)
 
   In the `use` options, you may pass in any of the values described for the
   struct fields in `DataWorker.Config`.
@@ -121,8 +120,8 @@ defmodule DataWorker do
       @doc false
       @impl true
       @spec child_spec(keyword) :: Supervisor.child_spec()
-      def child_spec(_) do
-        DataWorker.child_spec(__MODULE__, unquote(use_opts))
+      def child_spec(opts) do
+        DataWorker.child_spec(__MODULE__, unquote(use_opts), opts)
       end
 
       @doc "Returns the `%DataWorker.Config{}`"
@@ -176,17 +175,17 @@ defmodule DataWorker do
       def get(key, opts \\ []),
         do: DataWorker.get(__MODULE__, key, opts)
 
-      @doc "Set a key/val in the bucket directly"
+      @doc "Set a key/val in the bucket directly, avoiding `&load/1`"
       @spec direct_get(DataWorker.key()) :: term
       def direct_get(key), do: DataWorker.direct_get(unquote(bucket), key)
 
-      @doc "Get a key/val from the bucket directly"
+      @doc "Get a key/val from the bucket directly, avoiding `&load/1`"
       @spec direct_set(DataWorker.key(), DataWorker.value()) :: :ok | :no_bucket
       def direct_set(key, val),
         do: DataWorker.direct_set(unquote(bucket), key, val)
 
       @doc "Gets a list of all keys in a given bucket."
-      @spec keys :: [DataWorker.key()]
+      @spec keys :: [DataWorker.key()] | :no_bucket
       def keys, do: Bucket.keys(unquote(bucket))
 
       defoverridable init: 1, full_refresh: 0
@@ -194,13 +193,14 @@ defmodule DataWorker do
   end
 
   @doc false
-  def child_spec(mod, use_opts) do
-    %{id: mod, start: {__MODULE__, :start_link, [mod, use_opts]}}
+  def child_spec(mod, use_opts, opts) do
+    opts = Keyword.merge(use_opts, opts)
+    %{id: mod, start: {__MODULE__, :start_link, [mod, opts]}}
   end
 
   @doc false
-  def start_link(mod, use_opts) do
-    GenServer.start_link(__MODULE__, {mod, use_opts}, name: mod)
+  def start_link(mod, opts) do
+    GenServer.start_link(__MODULE__, {mod, opts}, name: mod)
   end
 
   @doc false
@@ -213,7 +213,7 @@ defmodule DataWorker do
     |> if do
       :ok
     else
-      :ok = Bucket.new(bucket)
+      :ok = Bucket.ensure_new(bucket)
 
       {config.mod, :init, [config]}
       |> invoke_carefully()
@@ -222,7 +222,7 @@ defmodule DataWorker do
     |> case do
       :ok ->
         c_table = String.to_atom("#{bucket}_config")
-        :ok = Bucket.new(c_table)
+        :ok = Bucket.ensure_new(c_table)
         :ok = Bucket.set(c_table, nil, config)
 
         schedule_full_refresh(config.refresh_interval)
@@ -291,6 +291,14 @@ defmodule DataWorker do
   @spec direct_set(bucket, key, value) :: :ok | :no_bucket
   def direct_set(bucket, key, val) do
     Bucket.set(bucket, key, val)
+  end
+
+  @doc "Delete the in-memory tables related to the given bucket."
+  @spec delete_tables(bucket) :: :ok | :no_table
+  def delete_tables(bucket) do
+    with :ok <- Bucket.delete(bucket) do
+      Bucket.delete(String.to_atom("#{bucket}_config"))
+    end
   end
 
   defp do_fetch(%{cache_enabled: false} = config, key, opts) do
@@ -387,7 +395,7 @@ defmodule DataWorker do
         {:ok, val}
 
       {:ok, val, map} when is_map(map) ->
-        store_map_into_cache(config, map)
+        unless Keyword.get(opts, :skip_save), do: store_map_into_cache(config, map)
         {:ok, val}
 
       {:error, error} ->

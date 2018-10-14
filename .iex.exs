@@ -3,20 +3,11 @@ alias DataWorker.Bucket, as: B
 alias DataWorker.Config, as: C
 
 defmodule T do
-  def launch(mod) do
-    {m, f, a} = Map.get(mod.child_spec(:_), :start)
+  def launch(mod, opts \\ []) do
+    {m, f, a} = Map.get(mod.child_spec(opts), :start)
     apply(m, f, a)
   end
+
+  # eg: {:ok, pid} = T.tw(file: "foo")
+  def tw(o \\ []), do: launch(TestWorker, o)
 end
-
-# defmodule Basic do
-#   use DataWorker, bucket: :basic
-
-#   def init(_) do
-#     {:ok, %{seeded: "on init"}}
-#   end
-
-#   def load(input) do
-#     {:ok, "The value for #{input}"}
-#   end
-# end
