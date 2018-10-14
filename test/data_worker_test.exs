@@ -15,6 +15,16 @@ defmodule Basic do
   end
 end
 
+defmodule CacheDisabled do
+  use DataWorker, bucket: :cache_disabled, cache_disabled: true
+
+  def load(key) do
+    require Logger
+    Logger.info("loading #{inspect(key)}")
+    4
+  end
+end
+
 defmodule InitMap do
   use DataWorker, bucket: :init_map
   def init(_), do: {:ok, %{x: 1, y: 2, z: 3}}
@@ -44,6 +54,11 @@ defmodule LoadMap do
   def load(:b), do: {:ok, 2, %{a: 1, b: 2, c: 3}}
 end
 
+defmodule LoadError do
+  use DataWorker, bucket: :load_error
+  def load(:a), do: {:error, "Whoopsie"}
+end
+
 defmodule LoadRaise do
   use DataWorker, bucket: :load_raise
   def load(:r), do: raise("It broke")
@@ -54,10 +69,16 @@ defmodule WithFile do
   def load(input), do: {:ok, "blah, #{input}"}
 end
 
+defmodule WithBadFile do
+  use DataWorker, bucket: :wfile, file: "/probably-no-permission"
+  def load(input), do: {:ok, "meh, #{input}"}
+end
+
 defmodule FullRefresher do
   use DataWorker, bucket: :full_refresher, refresh_interval: 0.02
   require Logger
 
+  def load(:x), do: raise "x bad!"
   def load(input) do
     Logger.info("loading #{inspect(input)}")
     {:ok, nil}
@@ -90,6 +111,13 @@ defmodule DataWorkerTest do
     end
   end
 
+  test "cache disabled" do
+    launch(CacheDisabled)
+    assert capture_log(fn -> CacheDisabled.get(:yo) end) =~ "loading :yo"
+    assert capture_log(fn -> CacheDisabled.get(:yo) end) =~ "loading :yo"
+    assert capture_log(fn -> CacheDisabled.get(:yo) end) =~ "loading :yo"
+  end
+
   test "dump file" do
     file = "/tmp/dataworker-bucket-wfile"
     File.rm(file)
@@ -104,6 +132,10 @@ defmodule DataWorkerTest do
     assert {:ok, "blah, one"} == WithFile.fetch("one")
     assert {:ok, ~w(two one)} == WithFile.keys()
     File.rm(file)
+  end
+
+  test "bad file for dump" do
+    assert capture_log(fn -> launch(WithBadFile) end) =~ ":read_error"
   end
 
   test "init: map" do
@@ -133,12 +165,17 @@ defmodule DataWorkerTest do
     assert {:ok, ~w(a b c)a} == LoadMap.keys()
   end
 
+  test "load: error" do
+    launch(LoadError)
+    assert capture_log(fn -> LoadError.get(:a) end) =~ "error: Whoopsie"
+  end
+
   test "load: raise" do
     launch(LoadRaise)
     assert capture_log(fn -> LoadRaise.fetch(:r) end) =~ ~s/"It broke"/
   end
 
-  test "full refresh" do
+  test "full refresh and direct set/get" do
     launch(FullRefresher)
     assert nil == FullRefresher.get(:a)
     assert nil == FullRefresher.get(:b)
@@ -150,6 +187,13 @@ defmodule DataWorkerTest do
     assert log =~ "loading :a"
     assert log =~ "loading :b"
     assert log =~ "loading :c"
+
+    assert capture_log(fn ->
+      FullRefresher.get(:x)
+    end) =~ "x bad!"
+
+    assert :ok == FullRefresher.direct_set(:key, :val)
+    assert :val == FullRefresher.direct_get(:key)
   end
 
   test "using" do

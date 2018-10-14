@@ -178,11 +178,12 @@ defmodule DataWorker do
 
       @doc "Set a key/val in the bucket directly"
       @spec direct_get(DataWorker.key()) :: term
-      def direct_get(key), do: DataWorker.direct_get(__MODULE__, key)
+      def direct_get(key), do: DataWorker.direct_get(unquote(bucket), key)
 
       @doc "Get a key/val from the bucket directly"
       @spec direct_set(DataWorker.key(), DataWorker.value()) :: :ok | :no_bucket
-      def direct_set(key, val), do: DataWorker.direct_set(__MODULE__, key, val)
+      def direct_set(key, val),
+        do: DataWorker.direct_set(unquote(bucket), key, val)
 
       @doc "Gets a list of all keys in a given bucket."
       @spec keys :: [DataWorker.key()]
@@ -351,7 +352,7 @@ defmodule DataWorker do
     |> Enum.map(
       &spawn(fn ->
         try do
-          run_load(config, &1)
+          {:ok, _} = run_load(config, &1)
         rescue
           e ->
             Logger.error("""
@@ -380,7 +381,7 @@ defmodule DataWorker do
           "Loaded #{bucket}[#{inspect(key)}]: #{ins}"
         end)
 
-        unless Keyword.get(opts, :skip_save?), do: save_value(config, key, val)
+        unless Keyword.get(opts, :skip_save), do: save_value(config, key, val)
         {:ok, val}
 
       {:ok, val, map} when is_map(map) ->
@@ -413,23 +414,10 @@ defmodule DataWorker do
     end
   end
 
-  defp maybe_call_fn(fun, args) when is_function(fun),
-    do: apply(fun, args)
-
-  defp maybe_call_fn(_, _),
-    do: :ok
-
   # Save a value to the bucket; log errors
   @spec save_value(module, key, value) :: :ok
   defp save_value(%{bucket: bucket}, key, val) do
-    case Bucket.set(bucket, key, val) do
-      :ok ->
-        :ok
-
-      :no_bucket ->
-        Logger.error("#{bucket}:#{key}: Tried to save value, but no bucket!")
-        :ok
-    end
+    :ok = Bucket.set(bucket, key, val)
   end
 
   # Load an entire map into the cache
