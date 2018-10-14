@@ -129,7 +129,6 @@ defmodule DataWorkerTest do
     assert {:ok, "blah, one"} == WithFile.fetch("one")
     assert {:ok, "blah, two"} == WithFile.fetch("two")
     kill_and_wait(pid)
-    # DataWorker.delete_tables(:wfile)
     launch(WithFile)
     assert {:ok, "blah, one"} == WithFile.fetch("one")
     assert {:ok, ~w(two one)} == WithFile.keys()

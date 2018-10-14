@@ -95,11 +95,7 @@ defmodule DataWorker do
   @doc "Give a DataWorker the opportunity to settle in"
   @callback init(Config.t()) :: init_return
 
-  @doc """
-  Do the work to procure the value for a given key.
-
-  This callback is intended only for internal use.
-  """
+  @doc "Do the work to procure the value for a given key."
   @callback load(key) :: load_return
 
   @doc "Invoked on the `:refresh_interval` when the cache should be refreshed"
@@ -124,10 +120,14 @@ defmodule DataWorker do
         DataWorker.child_spec(__MODULE__, unquote(use_opts), opts)
       end
 
+      @doc "Get the bucket name for this module."
+      @spec bucket :: DataWorker.bucket()
+      def bucket, do: unquote(Keyword.get(use_opts, :bucket))
+
       @doc "Returns the `%DataWorker.Config{}`"
       @spec config :: Config.t() | no_return
       def config do
-        case Bucket.get(unquote(String.to_atom("#{bucket}_config")), nil) do
+        case Bucket.get(unquote(config_table(bucket)), nil) do
           %Config{} = config ->
             config
 
@@ -221,7 +221,7 @@ defmodule DataWorker do
     end
     |> case do
       :ok ->
-        c_table = String.to_atom("#{bucket}_config")
+        c_table = config_table(bucket)
         :ok = Bucket.ensure_new(c_table)
         :ok = Bucket.set(c_table, nil, config)
 
@@ -297,9 +297,12 @@ defmodule DataWorker do
   @spec delete_tables(bucket) :: :ok | :no_table
   def delete_tables(bucket) do
     with :ok <- Bucket.delete(bucket) do
-      Bucket.delete(String.to_atom("#{bucket}_config"))
+      Bucket.delete(config_table(bucket))
     end
   end
+
+  @doc "Get the name of a bucket's config table by its name"
+  def config_table(bucket), do: String.to_atom("#{bucket}_config")
 
   defp do_fetch(%{cache_enabled: false} = config, key, opts) do
     run_load(config, key, opts)
@@ -395,7 +398,9 @@ defmodule DataWorker do
         {:ok, val}
 
       {:ok, val, map} when is_map(map) ->
-        unless Keyword.get(opts, :skip_save), do: store_map_into_cache(config, map)
+        unless Keyword.get(opts, :skip_save),
+          do: store_map_into_cache(config, map)
+
         {:ok, val}
 
       {:error, error} ->
