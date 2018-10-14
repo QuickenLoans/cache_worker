@@ -128,7 +128,7 @@ defmodule DataWorker do
       @doc "Returns the `%DataWorker.Config{}`"
       @spec config :: Config.t() | no_return
       def config do
-        case Bucket.get(unquote(:"#{bucket}_config"), nil) do
+        case Bucket.get(unquote(String.to_atom("#{bucket}_config")), nil) do
           %Config{} = config ->
             config
 
@@ -208,7 +208,9 @@ defmodule DataWorker do
     %{bucket: bucket} = config = Config.normalize!(mod, use_opts)
 
     # Skip init if we load a cache file
-    if maybe_load_file(bucket, config.file) do
+    bucket
+    |> maybe_load_file(config.file)
+    |> if do
       :ok
     else
       :ok = Bucket.new(bucket)
@@ -219,7 +221,7 @@ defmodule DataWorker do
     end
     |> case do
       :ok ->
-        c_table = :"#{bucket}_config"
+        c_table = String.to_atom("#{bucket}_config")
         :ok = Bucket.new(c_table)
         :ok = Bucket.set(c_table, nil, config)
 
