@@ -8,10 +8,11 @@ defmodule DataWorker.Config do
   * `:file` - Full path and filename where we should save the cache to
     whenever it is updated. If `nil`, this functionality is disabled. If
     defined, the data will be used to seed the cache on start.
-  * `:refresh_interval` - The interval (in seconds) between full cache
-    refreshes. When this occurs, it is done in the background and the data is
-    atomically replaced. No processes are blocked from reading. If `nil`,
-    refreshing is disabled. Default is 900 (15 minutes).
+  * `:refresh_interval` - The interval (in seconds) after the end of a full
+    refresh (or init step) until a full_refresh is triggered. When this occurs,
+    it is done in the background and the data is atomically replaced. No
+    processes are blocked from reading. If `nil`, refreshing is disabled.
+    Default is 900 (15 minutes).
   * `:config_fn` - This may be set to a function which returns a keyword list
     to be merged with the inital_options for the actual set of options to use
     at run-time. Leave as the default `nil` if unneeded.
