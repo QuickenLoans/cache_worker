@@ -49,10 +49,9 @@ defmodule DataWorker do
   Steps Taken on a `&fetch(key)` Request:
 
       `&fetch("key")`
-      --> [Cache] => `{:ok, "value"}`
-          --> `&load("key")` => `{:error, "Something went wrong!"}`
-              --> `{:ok, "Some data!"}`
-                  --> *Saved to the cache* => `{:ok, "Some data!"}`
+      --> [Cache] => *from cache,* `{:ok, "value from cache"}`
+          --> *no cache:* `&load("key")` => `{:error, "Something went wrong!"}`
+              --> *Saved to the cache* => `{:ok, "Hot & fresh value!"}`
 
   ## Options for `use DataWorker`
 
