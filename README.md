@@ -1,6 +1,6 @@
 # DataWorker
 
-**TODO: Add description**
+Defines a behavior to be implemented for managing data that should be held in the VM and periodically refreshed.
 
 ## Installation
 
