@@ -67,10 +67,40 @@ defmodule DataWorker do
   In the `use` options, you may pass in any of the values described for the
   struct fields in `DataWorker.Config`.
 
+  ## The `&load/1` Callback
+
+  Make sure you implement this one! It should fetch and return the data for
+  the given key. Your implementation should return one of the following:
+
+  * `{:ok, value}` - the value for the given key is being returned (and should
+    be added to the bucket)
+  * `{:ok, value, map}` - the value for the given key is being returned, but
+    should not be automatically cached. Instead, all key/val pairs provided by
+    the map in the third tuple element should be added to the bucket
+  * `{:error, message}` - an error should be logged and nothing should be added
+    to the bucket. Note that `&get/1` will return `nil` and `&fetch/1` will
+    return the same error tuple.
+
+  ## The `&init/1` Callback
+
+  You might like to override the default implementation for the `&init/1`
+  callback in order to take certain steps when your data worker starts up,
+  the most obvious of which would be seeding your bucket with certain data.
+
+  Simply override the `&init/1` callback and return one of the following:
+
+  * `:ok` - simply indicates that we've started up and are good to go
+  * `{:ok, map}` - indicates that the bucket should be seeded with key/val
+    pairs returned as a map
+  * `{:error, message}` - indicates that an error should be logged, but the
+    worker should start up normally, otherwise
+  * `{:stop, message}` - indicates that our GenServer startup should fail,
+    fatally.
+
   ## Options for `&fetch/1` and `&get/2`
 
-  These functions allow access to the data in the data worker. The following
-  options are available:
+  These functions allow access to the data in the data worker's bucket. The
+  following options are available:
 
   * `:skip_save` - When set to `true` and `&load/1` is invoked to load a value,
     that value will not be saved to the cache as usual. Instead, it's expected
@@ -336,16 +366,16 @@ defmodule DataWorker do
       :ok ->
         :ok
 
-      {:warn, msg} ->
-        Logger.warn(fn -> "#{config.mod} warns: #{msg}" end)
-        :ok
-
       {:stop, msg} ->
         {:stop, msg}
 
+      {:error, msg} ->
+        Logger.warn(fn -> "#{config.mod}.init Error: #{msg}" end)
+        :ok
+
       {:caught, type, error} ->
         Logger.warn(fn ->
-          "#{config.mod}.init #{inspect(type)}, #{inspect(error)}"
+          "#{config.mod}.init Exception: #{inspect(type)}, #{inspect(error)}"
         end)
 
         :ok

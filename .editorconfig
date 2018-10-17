@@ -4,5 +4,5 @@ root = true
 indent_style = space
 indent_size = 4
 
-[*.{js,ex,exs,elm,yml}]
+[*.{ex,exs,yml}]
 indent_size = 2
