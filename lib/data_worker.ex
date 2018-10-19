@@ -69,8 +69,9 @@ defmodule DataWorker do
 
   ## The `&load/1` Callback
 
-  Make sure you implement this one! It should fetch and return the data for
-  the given key. Your implementation should return one of the following:
+  This is the only callback you *must* implement. It should fetch and return
+  the data for the given key. This function should return one of the
+  following:
 
   * `{:ok, value}` - the value for the given key is being returned (and should
     be added to the bucket)
@@ -96,6 +97,13 @@ defmodule DataWorker do
     worker should start up normally, otherwise
   * `{:stop, message}` - indicates that our GenServer startup should fail,
     fatally.
+
+  ## Error Insulation
+
+  Data workers will catch and log any errors that arise from `init()` or
+  `load()`. While callers can easily throw an error if they need to, they
+  will not need to be overly cautious (catching errors) when reaching for
+  data if they prefer to gracefully continue on failures.
 
   ## Options for `&fetch/1` and `&get/2`
 
