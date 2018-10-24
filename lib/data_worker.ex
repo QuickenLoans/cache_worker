@@ -360,7 +360,7 @@ defmodule DataWorker do
   defp invoke_carefully({mod, fun, args}) do
     apply(mod, fun, args)
   catch
-    type, error -> {:caught, type, error}
+    type, error -> {:caught, type, error, __STACKTRACE__}
   end
 
   @spec handle_init_ret(init_return | {:caught, atom, map}, Config.t()) ::
@@ -381,9 +381,12 @@ defmodule DataWorker do
         Logger.warn(fn -> "#{config.mod}.init Error: #{msg}" end)
         :ok
 
-      {:caught, type, error} ->
+      {:caught, type, error, stacktrace} ->
         Logger.warn(fn ->
-          "#{config.mod}.init Exception: #{inspect(type)}, #{inspect(error)}"
+          """
+          #{config.mod}.init error:
+          #{Exception.format(type, error, stacktrace)}
+          """
         end)
 
         :ok
@@ -449,9 +452,10 @@ defmodule DataWorker do
         Logger.error(msg)
         {:error, msg}
 
-      {:caught, type, error} ->
+      {:caught, type, error, stacktrace} ->
         msg = """
-        #{mod}.load(#{inspect(key)}) error: #{inspect(type)}, #{inspect(error)}
+        #{mod}.load(#{inspect(key)}) error:
+        #{Exception.format(type, error, stacktrace)}
         """
 
         Logger.warn(msg)
