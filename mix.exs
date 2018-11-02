@@ -16,6 +16,15 @@ defmodule DataWorker.MixProject do
         "coveralls.detail": :test,
         "coveralls.post": :test,
         "coveralls.html": :test
+      ],
+
+      # Docs
+      name: "DataWorker",
+      source_url: "https://git.rockfin.com/ABellinson/data_worker", 
+      homepage_url: "https://git.rockfin.com/ABellinson/data_worker", 
+      docs: [
+        main: "DataWorker",
+        extras: ["README.md"]
       ]
     ]
   end
@@ -31,7 +40,8 @@ defmodule DataWorker.MixProject do
   defp deps do
     [
       {:credo, "~> 0.9.1", only: [:dev, :test]},
-      {:excoveralls, "~> 0.10", only: :test}
+      {:excoveralls, "~> 0.10", only: :test},
+      {:ex_doc, "~> 0.19", only: :dev, runtime: false}
     ]
   end
 
