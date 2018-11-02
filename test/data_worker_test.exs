@@ -147,7 +147,7 @@ defmodule DataWorkerTest do
   test "init: warn" do
     assert capture_log(fn ->
              launch(InitWarn)
-           end) =~ "InitWarn warns: Careful, mate!"
+           end) =~ ~r/InitWarn.*warn.*Careful, mate/
   end
 
   test "init: stop" do
@@ -157,7 +157,7 @@ defmodule DataWorkerTest do
   test "init: raise" do
     assert capture_log(fn ->
              launch(InitRaise)
-           end) =~ ~s/InitRaise.init :error, %RuntimeError{message: "Crap!!"}/
+           end) =~ ~r/InitRaise.init.*error.*RuntimeError.*Crap/s
   end
 
   test "load: map" do
@@ -173,7 +173,7 @@ defmodule DataWorkerTest do
 
   test "load: raise" do
     launch(LoadRaise)
-    assert capture_log(fn -> LoadRaise.fetch(:r) end) =~ ~s/"It broke"/
+    assert capture_log(fn -> LoadRaise.fetch(:r) end) =~ ~s/It broke/
   end
 
   test "full refresh and direct set/get" do
