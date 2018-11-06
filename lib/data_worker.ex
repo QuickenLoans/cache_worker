@@ -1,12 +1,12 @@
 defmodule DataWorker do
   @moduledoc String.trim_leading(
-    Regex.replace(
-      ~r/```(elixir|json)(\n|.*)```/Us,
-      File.read!("README.md"),
-      fn(_, _, code) -> Regex.replace(~r/^/m, code, "    ") end
-    ),
-    "# DataWorker\n\n"
-  )
+               Regex.replace(
+                 ~r/```(elixir|json)(\n|.*)```/Us,
+                 File.read!("README.md"),
+                 fn _, _, code -> Regex.replace(~r/^/m, code, "    ") end
+               ),
+               "# DataWorker\n\n"
+             )
 
   use GenServer
   alias DataWorker.{Bucket, Config}
@@ -20,7 +20,8 @@ defmodule DataWorker do
           {:ok, map} | :ok | {:warn, String.t()} | {:stop, String.t()}
   @type load_return :: {:ok, value} | {:error, String.t()}
   @type fetch_return :: {:ok, value} | {:error, String.t()} | :no_bucket
-  @type fetch_no_save_return :: {:ok, value, boolean} | {:error, String.t()} | :no_bucket
+  @type fetch_no_save_return ::
+          {:ok, value, boolean} | {:error, String.t()} | :no_bucket
 
   @doc "Returns the child_spec which should be used by the supervisor"
   @callback child_spec(keyword) :: Supervisor.child_spec()

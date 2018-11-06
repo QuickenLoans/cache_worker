@@ -27,23 +27,27 @@ experience for consumers, trying to access the data.
 If you wanted to keep track of some widgets, you might create your module
 thusly:
 
-    defmodule WidgetStore do
-    use DataWorker, bucket: :widgets, file: "/tmp/widget-dump"
+```elixir
+defmodule WidgetStore do
+  use DataWorker, bucket: :widgets, file: "/tmp/widget-dump"
 
-    def load(key) do
-        {:ok, Somewhere.get_widget(key)}
-    end
-    end
+  def load(key) do
+    {:ok, Somewhere.get_widget(key)}
+  end
+end
+```
 
 Add the `WidgetStore` module to your supervision tree. This will add the
 data refresher agent to handle updating the keys on the refresh interval.
 
-    children = [
-    WidgetStore,
-    ...,
-    ]
+```elixir
+children = [
+  WidgetStore,
+  ...,
+]
 
-    Supervisor.start_link(children, opts)
+Supervisor.start_link(children, opts)
+```
 
 When WidgetStore is started, it will load the dump file if one was
 configured. If a `:refresh_interval` was configured, a full refresh of all
@@ -63,9 +67,9 @@ dispatched for the value, which will then be cached and returned.
 Steps Taken on a `&fetch(key)` Request:
 
     `&fetch("key")`
-    --> [Cache] => *from cache,* `{:ok, "value from cache"}`
-        --> *no cache:* `&load("key")` => `{:error, "Something went wrong!"}`
-            --> *Saved to the cache* => `{:ok, "Hot & fresh value!"}`
+    --> [Cache] => *from cache* `{:ok, "value from cache"}`
+        -or-> *no cache* `&load("key")` => `{:error, "Something went wrong!"}`
+            -or-> *Saved to the cache* => `{:ok, "Hot & fresh value!"}`
 
 ### Options for `use DataWorker`
 
@@ -115,9 +119,8 @@ fatally.
 ### Error Insulation
 
 Data workers will catch and log any errors that arise from `init()` or
-`load()`. While callers can easily throw an error if they need to, they
-will not need to be overly cautious (catching errors) when reaching for
-data if they prefer to gracefully continue on failures.
+`load()`. Callers will not need to be overly cautious (catching errors) when
+reaching for data if they prefer to gracefully continue on failures.
 
 ### Options for `&fetch/1` and `&get/2`
 
