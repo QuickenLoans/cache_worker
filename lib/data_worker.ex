@@ -20,6 +20,7 @@ defmodule DataWorker do
           {:ok, map} | :ok | {:warn, String.t()} | {:stop, String.t()}
   @type load_return :: {:ok, value} | {:error, String.t()}
   @type fetch_return :: {:ok, value} | {:error, String.t()} | :no_bucket
+  @type fetch_no_save_return :: {:ok, value, boolean} | {:error, String.t()} | :no_bucket
 
   @doc "Returns the child_spec which should be used by the supervisor"
   @callback child_spec(keyword) :: Supervisor.child_spec()
@@ -102,6 +103,16 @@ defmodule DataWorker do
               DataWorker.fetch_return()
       def fetch(key, opts \\ []), do: DataWorker.fetch(__MODULE__, key, opts)
 
+      @doc """
+      Fetches the value for a specific key in the bucket with `:skip_save`
+      set to true. On success, the `:ok` tuple has a third element as a
+      boolean which will be true if `&load/1` was called.
+      """
+      @spec fetch_no_save(DataWorker.key(), DataWorker.opts()) ::
+              DataWorker.fetch_no_save_return()
+      def fetch_no_save(key, opts \\ []),
+        do: DataWorker.fetch_no_save(__MODULE__, key, opts)
+
       @doc "Gets the value for a specific key in the bucket."
       @spec get(DataWorker.key(), DataWorker.opts()) :: term
       def get(key, opts \\ []),
@@ -181,6 +192,14 @@ defmodule DataWorker do
   @doc "Fetch a value from the DataWorker"
   @spec fetch(module, key, opts) :: fetch_return
   def fetch(mod, key, opts \\ []) do
+    with {:ok, value, _load_called?} <- do_fetch(mod.config(), key, opts) do
+      {:ok, value}
+    end
+  end
+
+  @doc "Fetch a value from the DataWorker, but dont save"
+  @spec fetch_no_save(module, key, opts) :: fetch_return
+  def fetch_no_save(mod, key, opts \\ []) do
     do_fetch(mod.config(), key, opts)
   end
 
@@ -242,9 +261,12 @@ defmodule DataWorker do
 
   defp do_fetch(%{bucket: bucket} = config, key, opts) do
     with :undefined <- Bucket.fetch(bucket, key),
-         {:ok, val} <- run_load(config, key, opts) do
+         {:ok, val, load_called?} <- run_load(config, key, opts) do
       file_dump(bucket, config.file)
-      {:ok, val}
+      {:ok, val, load_called?}
+    else
+      {:ok, val} -> {:ok, val, false}
+      other -> other
     end
   end
 
@@ -300,11 +322,11 @@ defmodule DataWorker do
     |> Enum.map(
       &spawn(fn ->
         try do
-          {:ok, _} = run_load(config, &1)
+          {:ok, _, _} = run_load(config, &1)
         rescue
           e ->
             Logger.error("""
-            Error processing CMS key #{inspect(&1)}: #{inspect(e)}\
+            Error processing #{inspect(keys)} key #{inspect(&1)}: #{inspect(e)}\
             """)
         end
 
@@ -330,13 +352,13 @@ defmodule DataWorker do
         end)
 
         unless Keyword.get(opts, :skip_save), do: save_value(config, key, val)
-        {:ok, val}
+        {:ok, val, true}
 
       {:ok, val, map} when is_map(map) ->
         unless Keyword.get(opts, :skip_save),
           do: store_map_into_cache(config, map)
 
-        {:ok, val}
+        {:ok, val, true}
 
       {:error, error} ->
         msg = "#{mod}.load(#{inspect(key)}) error: #{error}"

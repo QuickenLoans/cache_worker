@@ -135,6 +135,15 @@ defmodule DataWorkerTest do
     File.rm(file)
   end
 
+  test "fetch no save" do
+    file = "/tmp/dataworker-bucket-wfile"
+    File.rm(file)
+    Process.flag(:trap_exit, true)
+    {:ok, pid} = launch(WithFile)
+    assert {:ok, "blah, one", true} == WithFile.fetch_no_save("one")
+    assert {:ok, "blah, two", true} == WithFile.fetch_no_save("two")
+  end
+
   test "bad file for dump" do
     assert capture_log(fn -> launch(WithBadFile) end) =~ ":read_error"
   end
