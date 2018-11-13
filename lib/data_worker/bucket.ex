@@ -1,4 +1,4 @@
-defmodule DataWorker.Bucket do
+defmodule CacheWorker.Bucket do
   @moduledoc """
   The Bucket provides wrapper functionality around our data store, ETS.
   """

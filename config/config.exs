@@ -10,11 +10,11 @@ use Mix.Config
 
 # You can configure your application as:
 #
-#     config :data_worker, key: :value
+#     config :cache_worker, key: :value
 #
 # and access this configuration in your application as:
 #
-#     Application.get_env(:data_worker, :key)
+#     Application.get_env(:cache_worker, :key)
 #
 # You can also configure a 3rd-party app:
 #

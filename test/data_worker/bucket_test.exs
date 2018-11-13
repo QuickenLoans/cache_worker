@@ -1,7 +1,7 @@
-defmodule DataWorker.BucketTest do
+defmodule CacheWorker.BucketTest do
   @moduledoc false
   use ExUnit.Case
-  import DataWorker.Bucket
+  import CacheWorker.Bucket
 
   test "New table works" do
     assert :ok == ensure_new(:a)
@@ -34,7 +34,7 @@ defmodule DataWorker.BucketTest do
   end
 
   test "dump file and delete functionality" do
-    file = "/tmp/dataworker-bucket-e"
+    file = "/tmp/cacheworker-bucket-e"
     File.rm(file)
     assert :ok == ensure_new(:e)
     assert :ok == set(:e, "one", "first one!")
@@ -54,7 +54,7 @@ defmodule DataWorker.BucketTest do
   end
 
   test "Import a dump file for a different name" do
-    file = "/tmp/dataworker-bucket-f"
+    file = "/tmp/cacheworker-bucket-f"
     File.rm(file)
     assert :ok == ensure_new(:f)
     assert :ok == set(:f, :lorem, "ipsum")

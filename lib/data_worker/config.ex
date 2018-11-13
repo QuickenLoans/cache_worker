@@ -1,6 +1,6 @@
-defmodule DataWorker.Config do
+defmodule CacheWorker.Config do
   @moduledoc """
-  Holds the `DataWorker` configuration
+  Holds the `CacheWorker` configuration
 
   * `:bucket` - The namespace (atom) for the cache store.
   * `:cache_enabled` - Boolean indicating if caching is enabled. If disabled,
@@ -16,7 +16,7 @@ defmodule DataWorker.Config do
   * `:config_fn` - This may be set to a function which returns a keyword list
     to be merged with the inital_options for the actual set of options to use
     at run-time. Leave as the default `nil` if unneeded.
-  * `:mod` - Internally defined. Set to the name of the module the DataWorker
+  * `:mod` - Internally defined. Set to the name of the module the CacheWorker
     is based on.
   """
 
@@ -39,7 +39,7 @@ defmodule DataWorker.Config do
         }
 
   @doc """
-  Given an options keyword list, return a `%DataWorker.Config{}`, warning and
+  Given an options keyword list, return a `%CacheWorker.Config{}`, warning and
   raising as appropriate.
   """
   @spec normalize!(module, keyword) :: %__MODULE__{} | no_return

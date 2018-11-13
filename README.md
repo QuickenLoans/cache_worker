@@ -1,16 +1,16 @@
-# DataWorker
+# CacheWorker
 
 Defines a behavior to be implemented for managing data that should be held in the VM and periodically refreshed.
 
 ## Installation
 
 If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `data_worker` to your list of dependencies in `mix.exs`:
+by adding `cache_worker` to your list of dependencies in `mix.exs`:
 
 ```elixir
 def deps do
   [
-    {:data_worker, "~> 0.1.0"}
+    {:cache_worker, "~> 0.1.0"}
   ]
 end
 ```
@@ -29,7 +29,7 @@ thusly:
 
 ```elixir
 defmodule WidgetStore do
-  use DataWorker, bucket: :widgets, file: "/tmp/widget-dump"
+  use CacheWorker, bucket: :widgets, file: "/tmp/widget-dump"
 
   def load(key) do
     {:ok, Somewhere.get_widget(key)}
@@ -56,7 +56,7 @@ the data will be triggered at that interval, forever.
 The `&load/1` function on your `WidgetStore` module defines how the value
 for a given key is found and is called on whenever (1) a value is being
 requested and isn't yet in the bucket, or (2) is being refreshed by the
-data worker process.
+cache worker process.
 
 To get a widget, all a consumer needs to do is call `&WidgetStore.get(key)`
 and it will be returned. (`&fetch/1` does similarly, but provides more
@@ -71,19 +71,19 @@ Steps Taken on a `&fetch(key)` Request:
         -or-> *no cache* `&load("key")` => `{:error, "Something went wrong!"}`
             -or-> *Saved to the cache* => `{:ok, "Hot & fresh value!"}`
 
-### Options for `use DataWorker`
+### Options for `use CacheWorker`
 
 The `:bucket` option must be defined directly in the `use` options.
 
 The cascading logic for finding the final list of options is as follows,
 with each step having the opportunity to override the last:
 
-* `%DataWorker.Config{}` struct defaults
+* `%CacheWorker.Config{}` struct defaults
 * Any options provided to `use`
 * Any options provided to `&child_spec/1`. (eg: `{WidgetStore, file: "foo"}`)
 
 In the `use` options, you may pass in any of the values described for the
-struct fields in `DataWorker.Config`.
+struct fields in `CacheWorker.Config`.
 
 ### The `&load/1` Callback
 
@@ -103,7 +103,7 @@ return the same error tuple.
 ### The `&init/1` Callback
 
 You might like to override the default implementation for the `&init/1`
-callback in order to take certain steps when your data worker starts up,
+callback in order to take certain steps when your cache worker starts up,
 the most obvious of which would be seeding your bucket with certain data.
 
 Simply override the `&init/1` callback and return one of the following:
@@ -118,13 +118,13 @@ fatally.
 
 ### Error Insulation
 
-Data workers will catch and log any errors that arise from `init()` or
+Cache workers will catch and log any errors that arise from `init()` or
 `load()`. Callers will not need to be overly cautious (catching errors) when
 reaching for data if they prefer to gracefully continue on failures.
 
 ### Options for `&fetch/1` and `&get/2`
 
-These functions allow access to the data in the data worker's bucket. The
+These functions allow access to the data in the cache worker's bucket. The
 following options are available:
 
 * `:skip_save` - When set to `true` and `&load/1` is invoked to load a value,

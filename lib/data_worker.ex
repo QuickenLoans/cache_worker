@@ -1,15 +1,15 @@
-defmodule DataWorker do
+defmodule CacheWorker do
   @moduledoc String.trim_leading(
                Regex.replace(
                  ~r/```(elixir|json)(\n|.*)```/Us,
                  File.read!("README.md"),
                  fn _, _, code -> Regex.replace(~r/^/m, code, "    ") end
                ),
-               "# DataWorker\n\n"
+               "# CacheWorker\n\n"
              )
 
   use GenServer
-  alias DataWorker.{Bucket, Config}
+  alias CacheWorker.{Bucket, Config}
   require Logger
 
   @type bucket :: atom
@@ -26,7 +26,7 @@ defmodule DataWorker do
   @doc "Returns the child_spec which should be used by the supervisor"
   @callback child_spec(keyword) :: Supervisor.child_spec()
 
-  @doc "Give a DataWorker the opportunity to settle in"
+  @doc "Give a CacheWorker the opportunity to settle in"
   @callback init(Config.t()) :: init_return
 
   @doc "Do the work to procure the value for a given key."
@@ -43,22 +43,22 @@ defmodule DataWorker do
     bucket = Keyword.get(use_opts, :bucket)
 
     quote do
-      alias DataWorker.Bucket
+      alias CacheWorker.Bucket
 
-      @behaviour DataWorker
+      @behaviour CacheWorker
 
       @doc false
       @impl true
       @spec child_spec(keyword) :: Supervisor.child_spec()
       def child_spec(opts) do
-        DataWorker.child_spec(__MODULE__, unquote(use_opts), opts)
+        CacheWorker.child_spec(__MODULE__, unquote(use_opts), opts)
       end
 
       @doc "Get the bucket name for this module."
-      @spec bucket :: DataWorker.bucket()
+      @spec bucket :: CacheWorker.bucket()
       def bucket, do: unquote(Keyword.get(use_opts, :bucket))
 
-      @doc "Returns the `%DataWorker.Config{}`"
+      @doc "Returns the `%CacheWorker.Config{}`"
       @spec config :: Config.t() | no_return
       def config do
         case Bucket.get(unquote(config_table(bucket)), nil) do
@@ -68,22 +68,22 @@ defmodule DataWorker do
           nil ->
             raise """
             No config available for #{unquote(bucket)} bucket. \
-            Did you forget to start its DataWorker?\
+            Did you forget to start its CacheWorker?\
             """
         end
       end
 
       @doc "Returns a particular value from the config"
-      @spec config(DataWorker.key(), term) :: term | no_return
+      @spec config(CacheWorker.key(), term) :: term | no_return
       def config(key, default \\ nil) do
         Map.get(config(), key, default)
       end
 
       @doc """
-      Initialize a DataWorker.
+      Initialize a CacheWorker.
 
       If a cache file is not loaded on startup, this callback will be invoked
-      with the DataWorker's `%Config{}`.
+      with the CacheWorker's `%Config{}`.
 
       This function should return `{:ok, map}` if a key/val set should be
       used to seed the cache, `:ok` if not, `{:warn, reason}` if a warning
@@ -91,45 +91,45 @@ defmodule DataWorker do
       halted.
       """
       @impl true
-      @spec init(%Config{}) :: DataWorker.init_return()
+      @spec init(%Config{}) :: CacheWorker.init_return()
       def init(%Config{} = _config), do: :ok
 
       @doc "Call `&load/2` for each key in the cache. Returns `:ok`"
       @impl true
       @spec full_refresh :: :ok
-      def full_refresh, do: DataWorker.full_refresh(__MODULE__)
+      def full_refresh, do: CacheWorker.full_refresh(__MODULE__)
 
       @doc "Fetches the value for a specific key in the bucket."
-      @spec fetch(DataWorker.key(), DataWorker.opts()) ::
-              DataWorker.fetch_return()
-      def fetch(key, opts \\ []), do: DataWorker.fetch(__MODULE__, key, opts)
+      @spec fetch(CacheWorker.key(), CacheWorker.opts()) ::
+              CacheWorker.fetch_return()
+      def fetch(key, opts \\ []), do: CacheWorker.fetch(__MODULE__, key, opts)
 
       @doc """
       Fetches the value for a specific key in the bucket with `:skip_save`
       set to true. On success, the `:ok` tuple has a third element as a
       boolean which will be true if `&load/1` was called.
       """
-      @spec fetch_no_save(DataWorker.key(), DataWorker.opts()) ::
-              DataWorker.fetch_no_save_return()
+      @spec fetch_no_save(CacheWorker.key(), CacheWorker.opts()) ::
+              CacheWorker.fetch_no_save_return()
       def fetch_no_save(key, opts \\ []),
-        do: DataWorker.fetch_no_save(__MODULE__, key, opts)
+        do: CacheWorker.fetch_no_save(__MODULE__, key, opts)
 
       @doc "Gets the value for a specific key in the bucket."
-      @spec get(DataWorker.key(), DataWorker.opts()) :: term
+      @spec get(CacheWorker.key(), CacheWorker.opts()) :: term
       def get(key, opts \\ []),
-        do: DataWorker.get(__MODULE__, key, opts)
+        do: CacheWorker.get(__MODULE__, key, opts)
 
       @doc "Set a key/val in the bucket directly, avoiding `&load/1`"
-      @spec direct_get(DataWorker.key()) :: term
-      def direct_get(key), do: DataWorker.direct_get(unquote(bucket), key)
+      @spec direct_get(CacheWorker.key()) :: term
+      def direct_get(key), do: CacheWorker.direct_get(unquote(bucket), key)
 
       @doc "Get a key/val from the bucket directly, avoiding `&load/1`"
-      @spec direct_set(DataWorker.key(), DataWorker.value()) :: :ok | :no_bucket
+      @spec direct_set(CacheWorker.key(), CacheWorker.value()) :: :ok | :no_bucket
       def direct_set(key, val),
-        do: DataWorker.direct_set(unquote(bucket), key, val)
+        do: CacheWorker.direct_set(unquote(bucket), key, val)
 
       @doc "Gets a list of all keys in a given bucket."
-      @spec keys :: [DataWorker.key()] | :no_bucket
+      @spec keys :: [CacheWorker.key()] | :no_bucket
       def keys, do: Bucket.keys(unquote(bucket))
 
       defoverridable init: 1, full_refresh: 0
@@ -173,7 +173,7 @@ defmodule DataWorker do
 
         Logger.debug(fn ->
           l = config |> Map.from_struct() |> Enum.into([])
-          "#{bucket}: Initialized DataWorker: #{inspect(l)}"
+          "#{bucket}: Initialized CacheWorker: #{inspect(l)}"
         end)
 
         {:ok, nil}
@@ -190,7 +190,7 @@ defmodule DataWorker do
     {:noreply, nil}
   end
 
-  @doc "Fetch a value from the DataWorker"
+  @doc "Fetch a value from the CacheWorker"
   @spec fetch(module, key, opts) :: fetch_return
   def fetch(mod, key, opts \\ []) do
     with {:ok, value, _load_called?} <- do_fetch(mod.config(), key, opts) do
@@ -198,13 +198,13 @@ defmodule DataWorker do
     end
   end
 
-  @doc "Fetch a value from the DataWorker, but dont save"
+  @doc "Fetch a value from the CacheWorker, but dont save"
   @spec fetch_no_save(module, key, opts) :: fetch_return
   def fetch_no_save(mod, key, opts \\ []) do
     do_fetch(mod.config(), key, opts)
   end
 
-  @doc "Get a value from the DataWorker"
+  @doc "Get a value from the CacheWorker"
   @spec get(module, key, opts) :: value | nil
   def get(mod, key, opts \\ []) do
     case fetch(mod, key, opts) do
@@ -453,7 +453,7 @@ defmodule DataWorker do
 
   defp maybe_load_file(_, _), do: false
 
-  # Get the module name for which this instance of DataWorker is running
+  # Get the module name for which this instance of CacheWorker is running
   @spec this_worker_module :: module
   defp this_worker_module do
     self() |> Process.info() |> Keyword.get(:registered_name)

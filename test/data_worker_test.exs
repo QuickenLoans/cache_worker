@@ -1,10 +1,10 @@
 defmodule SuperBasic do
-  use DataWorker, bucket: :super_basic
+  use CacheWorker, bucket: :super_basic
   def load(_), do: nil
 end
 
 defmodule CacheDisabled do
-  use DataWorker, bucket: :cache_disabled, cache_disabled: true
+  use CacheWorker, bucket: :cache_disabled, cache_disabled: true
 
   def load(key) do
     require Logger
@@ -14,56 +14,56 @@ defmodule CacheDisabled do
 end
 
 defmodule InitMap do
-  use DataWorker, bucket: :init_map
+  use CacheWorker, bucket: :init_map
   def init(_), do: {:ok, %{x: 1, y: 2, z: 3}}
   def load(_), do: nil
 end
 
 defmodule InitWarn do
-  use DataWorker, bucket: :init_warn
+  use CacheWorker, bucket: :init_warn
   def init(_), do: {:warn, "Careful, mate!"}
   def load(_), do: nil
 end
 
 defmodule InitStop do
-  use DataWorker, bucket: :init_stop
+  use CacheWorker, bucket: :init_stop
   def init(_), do: {:stop, "Oh damn"}
   def load(_), do: nil
 end
 
 defmodule InitRaise do
-  use DataWorker, bucket: :init_stop
+  use CacheWorker, bucket: :init_stop
   def init(_), do: raise("Crap!!")
   def load(_), do: nil
 end
 
 defmodule LoadMap do
-  use DataWorker, bucket: :load_map
+  use CacheWorker, bucket: :load_map
   def load(:b), do: {:ok, 2, %{a: 1, b: 2, c: 3}}
 end
 
 defmodule LoadError do
-  use DataWorker, bucket: :load_error
+  use CacheWorker, bucket: :load_error
   def load(:a), do: {:error, "Whoopsie"}
 end
 
 defmodule LoadRaise do
-  use DataWorker, bucket: :load_raise
+  use CacheWorker, bucket: :load_raise
   def load(:r), do: raise("It broke")
 end
 
 defmodule WithFile do
-  use DataWorker, bucket: :wfile, file: "/tmp/dataworker-bucket-wfile"
+  use CacheWorker, bucket: :wfile, file: "/tmp/cacheworker-bucket-wfile"
   def load(input), do: {:ok, "blah, #{input}"}
 end
 
 defmodule WithBadFile do
-  use DataWorker, bucket: :wfile, file: "/probably-no-permission"
+  use CacheWorker, bucket: :wfile, file: "/probably-no-permission"
   def load(input), do: {:ok, "meh, #{input}"}
 end
 
 defmodule FullRefresher do
-  use DataWorker, bucket: :full_refresher, refresh_interval: 0.02
+  use CacheWorker, bucket: :full_refresher, refresh_interval: 0.02
   require Logger
 
   def load(:x), do: raise("x bad!")
@@ -74,12 +74,12 @@ defmodule FullRefresher do
   end
 end
 
-defmodule DataWorkerTest do
+defmodule CacheWorkerTest do
   use ExUnit.Case
-  alias DataWorker.Config
+  alias CacheWorker.Config
   import ExUnit.CaptureLog
   import CompileTimeAssertions
-  doctest DataWorker
+  doctest CacheWorker
 
   test "child_spec" do
     opts =
@@ -122,7 +122,7 @@ defmodule DataWorkerTest do
   end
 
   test "dump file" do
-    file = "/tmp/dataworker-bucket-wfile"
+    file = "/tmp/cacheworker-bucket-wfile"
     File.rm(file)
     Process.flag(:trap_exit, true)
     {:ok, pid} = launch(WithFile)
@@ -136,7 +136,7 @@ defmodule DataWorkerTest do
   end
 
   test "fetch no save" do
-    file = "/tmp/dataworker-bucket-wfile"
+    file = "/tmp/cacheworker-bucket-wfile"
     File.rm(file)
     Process.flag(:trap_exit, true)
     {:ok, pid} = launch(WithFile)
@@ -209,7 +209,7 @@ defmodule DataWorkerTest do
       RuntimeError,
       ":bucket option must be defined directly in the use options!",
       quote do
-        defmodule(Xx, do: use(DataWorker, bucket: "oh hell no"))
+        defmodule(Xx, do: use(CacheWorker, bucket: "oh hell no"))
       end
     )
   end

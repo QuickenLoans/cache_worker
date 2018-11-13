@@ -2,11 +2,11 @@ defmodule MyWorker do
   @moduledoc false
 end
 
-defmodule DataWorker.ConfigTest do
+defmodule CacheWorker.ConfigTest do
   @moduledoc false
   use ExUnit.Case
-  import DataWorker.Config
-  alias DataWorker.Config
+  import CacheWorker.Config
+  alias CacheWorker.Config
 
   @expected_defaults [
     mod: nil,
@@ -22,7 +22,7 @@ defmodule DataWorker.ConfigTest do
   end
 
   test "normalize!" do
-    assert %DataWorker.Config{
+    assert %CacheWorker.Config{
              bucket: :demo,
              cache_enabled: true,
              config_fn: nil,

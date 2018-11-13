@@ -1,6 +1,6 @@
-alias DataWorker, as: D
-alias DataWorker.Bucket, as: B
-alias DataWorker.Config, as: C
+alias CacheWorker, as: D
+alias CacheWorker.Bucket, as: B
+alias CacheWorker.Config, as: C
 alias TestWorker, as: TW
 
 defmodule T do

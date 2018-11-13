@@ -1,10 +1,10 @@
-defmodule DataWorker.MixProject do
+defmodule CacheWorker.MixProject do
   @moduledoc false
   use Mix.Project
 
   def project do
     [
-      app: :data_worker,
+      app: :cache_worker,
       version: "0.1.0",
       elixir: "~> 1.7",
       start_permanent: Mix.env() == :prod,
@@ -19,11 +19,11 @@ defmodule DataWorker.MixProject do
       ],
 
       # Docs
-      name: "DataWorker",
-      source_url: "https://git.rockfin.com/ABellinson/data_worker", 
-      homepage_url: "https://git.rockfin.com/ABellinson/data_worker", 
+      name: "CacheWorker",
+      source_url: "https://git.rockfin.com/ABellinson/cache_worker",
+      homepage_url: "https://git.rockfin.com/ABellinson/cache_worker",
       docs: [
-        main: "DataWorker",
+        main: "CacheWorker",
         extras: ["README.md"]
       ]
     ]
