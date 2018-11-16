@@ -124,7 +124,8 @@ defmodule CacheWorker do
       def direct_get(key), do: CacheWorker.direct_get(unquote(bucket), key)
 
       @doc "Get a key/val from the bucket directly, avoiding `&load/1`"
-      @spec direct_set(CacheWorker.key(), CacheWorker.value()) :: :ok | :no_bucket
+      @spec direct_set(CacheWorker.key(), CacheWorker.value()) ::
+              :ok | :no_bucket
       def direct_set(key, val),
         do: CacheWorker.direct_set(unquote(bucket), key, val)
 
@@ -199,8 +200,9 @@ defmodule CacheWorker do
   end
 
   @doc "Fetch a value from the CacheWorker, but dont save"
-  @spec fetch_no_save(module, key, opts) :: fetch_return
+  @spec fetch_no_save(module, key, opts) :: fetch_no_save_return
   def fetch_no_save(mod, key, opts \\ []) do
+    opts = Keyword.merge([skip_save?: true], opts)
     do_fetch(mod.config(), key, opts)
   end
 
@@ -352,11 +354,11 @@ defmodule CacheWorker do
           "Loaded #{bucket}[#{inspect(key)}]: #{ins}"
         end)
 
-        unless Keyword.get(opts, :skip_save), do: save_value(config, key, val)
+        unless Keyword.get(opts, :skip_save?), do: save_value(config, key, val)
         {:ok, val, true}
 
       {:ok, val, map} when is_map(map) ->
-        unless Keyword.get(opts, :skip_save),
+        unless Keyword.get(opts, :skip_save?),
           do: store_map_into_cache(config, map)
 
         {:ok, val, true}

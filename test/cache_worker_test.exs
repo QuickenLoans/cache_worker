@@ -54,7 +54,7 @@ end
 
 defmodule WithFile do
   use CacheWorker, bucket: :wfile, file: "/tmp/cacheworker-bucket-wfile"
-  def load(input), do: {:ok, "blah, #{input}"}
+  def load(input), do: {:ok, "blah #{input}"}
 end
 
 defmodule WithBadFile do
@@ -126,11 +126,11 @@ defmodule CacheWorkerTest do
     File.rm(file)
     Process.flag(:trap_exit, true)
     {:ok, pid} = launch(WithFile)
-    assert {:ok, "blah, one"} == WithFile.fetch("one")
-    assert {:ok, "blah, two"} == WithFile.fetch("two")
+    assert {:ok, "blah one"} == WithFile.fetch("one")
+    assert {:ok, "blah two"} == WithFile.fetch("two")
     kill_and_wait(pid)
     launch(WithFile)
-    assert {:ok, "blah, one"} == WithFile.fetch("one")
+    assert {:ok, "blah one"} == WithFile.fetch("one")
     assert {:ok, ~w(two one)} == WithFile.keys()
     File.rm(file)
   end
@@ -139,9 +139,19 @@ defmodule CacheWorkerTest do
     file = "/tmp/cacheworker-bucket-wfile"
     File.rm(file)
     Process.flag(:trap_exit, true)
-    {:ok, pid} = launch(WithFile)
-    assert {:ok, "blah, one", true} == WithFile.fetch_no_save("one")
-    assert {:ok, "blah, two", true} == WithFile.fetch_no_save("two")
+    {:ok, _pid} = launch(WithFile)
+
+    assert {:ok, "blah one" = value, true} = WithFile.fetch_no_save("one")
+    # <determines the value is safe and we want to cache it>
+    assert :ok == WithFile.direct_set("one", value)
+    assert {:ok, ^value, false} = WithFile.fetch_no_save("one")
+
+    assert {:ok, value, true} = WithFile.fetch_no_save("two")
+    value = "#{value} i didnt have to, but im changing it"
+    assert :ok == WithFile.direct_set("two", value)
+    assert {:ok, ^value, false} = WithFile.fetch_no_save("two")
+
+    assert {:ok, "blah three", true} == WithFile.fetch_no_save("three")
   end
 
   test "bad file for dump" do
