@@ -2,11 +2,15 @@ defmodule CacheWorker.MixProject do
   @moduledoc false
   use Mix.Project
 
+  @github_url "https://git.rockfin.com/ABellinson/cache_worker"
+
   def project do
     [
+      # Missing metadata fields: description, licenses, links
       app: :cache_worker,
       version: "0.1.0",
       elixir: "~> 1.7",
+      package: package(),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       aliases: aliases(),
@@ -18,10 +22,16 @@ defmodule CacheWorker.MixProject do
         "coveralls.html": :test
       ],
 
+      # Hex
+      description: """
+      Defines a behavior to be implemented for managing data that should be
+      held in the VM and periodically refreshed.
+      """,
+
       # Docs
       name: "CacheWorker",
-      source_url: "https://git.rockfin.com/ABellinson/cache_worker",
-      homepage_url: "https://git.rockfin.com/ABellinson/cache_worker",
+      source_url: @github_url,
+      homepage_url: @github_url,
       docs: [
         main: "CacheWorker",
         extras: ["README.md"]
@@ -48,6 +58,19 @@ defmodule CacheWorker.MixProject do
   defp aliases do
     [
       lint: "credo --strict"
+    ]
+  end
+
+  defp package do
+    [
+      maintainers: ["Adam Bellinson"],
+      licenses: ["MIT"],
+      links: %{"github" => @github_url},
+      files: [
+        "lib",
+        "mix.exs",
+        "README.md"
+      ]
     ]
   end
 end
