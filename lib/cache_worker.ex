@@ -35,6 +35,8 @@ defmodule CacheWorker do
   @doc "Invoked on the `:refresh_interval` when the cache should be refreshed"
   @callback full_refresh :: :ok
 
+  @callback refresh_filter(load_return) :: load_return
+
   defmacro __using__(use_opts) do
     # Compile-time check with friendly reminder
     is_atom(Keyword.get(use_opts, :bucket, "not atom")) ||
@@ -94,10 +96,22 @@ defmodule CacheWorker do
       @spec init(%Config{}) :: CacheWorker.init_return()
       def init(%Config{} = _config), do: :ok
 
-      @doc "Call `&load/2` for each key in the cache. Returns `:ok`"
+      @doc "Call `&load/1` for each key in the cache. Returns `:ok`"
       @impl true
       @spec full_refresh :: :ok
-      def full_refresh, do: CacheWorker.full_refresh(__MODULE__)
+      def full_refresh do
+        CacheWorker.full_refresh(__MODULE__)
+      end
+
+      @doc """
+      For background refreshing, values returned from `&load/1` will be
+      passed through this function to allow for any particular logic that
+      isn't needed for normal fetches.
+      """
+      @impl true
+      @spec refresh_filter(CacheWorker.load_return()) ::
+              CacheWorker.load_return()
+      def refresh_filter(load_return), do: load_return
 
       @doc "Fetches the value for a specific key in the bucket."
       @spec fetch(CacheWorker.key(), CacheWorker.opts()) ::
@@ -133,7 +147,7 @@ defmodule CacheWorker do
       @spec keys :: [CacheWorker.key()] | :no_bucket
       def keys, do: Bucket.keys(unquote(bucket))
 
-      defoverridable init: 1, full_refresh: 0
+      defoverridable init: 1, full_refresh: 0, refresh_filter: 1
     end
   end
 
@@ -316,27 +330,12 @@ defmodule CacheWorker do
     end
   end
 
-  # Optimizes & executes calling the `&load/1` function for the given keys
+  # Optimizes & executes calling the `&load/1` function for the given keys.
+  # Blocks until refresh is finished.
   @spec refresh_for_keys(Config.t(), [key]) :: :ok
   defp refresh_for_keys(config, keys) do
-    parent = self()
-
     keys
-    |> Enum.map(
-      &spawn(fn ->
-        try do
-          {:ok, _, _} = run_load(config, &1)
-        rescue
-          e ->
-            Logger.error("""
-            Error processing #{inspect(keys)} key #{inspect(&1)}: #{inspect(e)}\
-            """)
-        end
-
-        send(parent, self())
-      end)
-    )
-    # block until refresh is finished
+    |> Enum.map(&spawn_refresher(&1, config))
     |> Enum.each(fn pid ->
       receive do
         ^pid -> nil
@@ -344,9 +343,30 @@ defmodule CacheWorker do
     end)
   end
 
+  defp spawn_refresher(key, config) do
+    parent = self()
+    opts = [filter_fn: &config.mod.refresh_filter/1]
+
+    spawn(fn ->
+      try do
+        {:ok, _, _} = run_load(config, key, opts)
+      rescue
+        e ->
+          Logger.error("""
+          Error processing key #{inspect(key)}: #{inspect(e)}\
+          """)
+      end
+
+      send(parent, self())
+    end)
+  end
+
   # Refresh and return a particular value; log errors
-  @spec run_load(Config.t(), key, opts) :: {:ok, value} | {:error, String.t()}
-  defp run_load(%{mod: mod, bucket: bucket} = config, key, opts \\ []) do
+  @spec run_load(Config.t(), key, opts) ::
+          {:ok, value, boolean} | {:error, String.t()}
+  defp run_load(%{mod: mod, bucket: bucket} = config, key, opts) do
+    filter_fn = Keyword.get(opts, :filter_fn, & &1)
+
     case invoke_carefully({mod, :load, [key]}) do
       {:ok, val} ->
         Logger.debug(fn ->
@@ -388,6 +408,7 @@ defmodule CacheWorker do
 
         {:error, msg}
     end
+    |> filter_fn.()
   end
 
   # Save a value to the bucket; log errors
