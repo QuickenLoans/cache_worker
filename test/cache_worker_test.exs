@@ -74,6 +74,18 @@ defmodule FullRefresher do
   end
 end
 
+defmodule WithRefreshFilter do
+  use CacheWorker, bucket: :full_refresher_w_filter, refresh_interval: 0.02
+  require Logger
+
+  def load(input) do
+    Logger.info("loading #{inspect(input)}")
+    {:ok, nil}
+  end
+
+  def refresh_filter(k, v), do: raise("i can raise!")
+end
+
 defmodule CacheWorkerTest do
   use ExUnit.Case
   alias CacheWorker.Config
@@ -212,6 +224,16 @@ defmodule CacheWorkerTest do
 
     assert :ok == FullRefresher.direct_set(:key, :val)
     assert :val == FullRefresher.direct_get(:key)
+  end
+
+  test "full refresh filter callback" do
+    launch(WithRefreshFilter)
+    assert nil == WithRefreshFilter.get(:m)
+    :timer.sleep(10)
+
+    log = capture_log(fn -> :timer.sleep(40) end)
+
+    assert log =~ "i can raise!"
   end
 
   test "using" do

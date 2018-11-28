@@ -35,7 +35,13 @@ defmodule CacheWorker do
   @doc "Invoked on the `:refresh_interval` when the cache should be refreshed"
   @callback full_refresh :: :ok
 
-  @callback refresh_filter(load_return) :: load_return
+  @callback fetch(CacheWorker.key(), CacheWorker.opts()) ::
+              CacheWorker.fetch_return()
+
+  @callback fetch_no_save(CacheWorker.key(), CacheWorker.opts()) ::
+              CacheWorker.fetch_no_save_return()
+
+  @callback refresh_filter(key, load_return) :: load_return
 
   defmacro __using__(use_opts) do
     # Compile-time check with friendly reminder
@@ -104,16 +110,17 @@ defmodule CacheWorker do
       end
 
       @doc """
-      For background refreshing, values returned from `&load/1` will be
+      For the background full refresh, values returned from `&load/1` will be
       passed through this function to allow for any particular logic that
       isn't needed for normal fetches.
       """
       @impl true
-      @spec refresh_filter(CacheWorker.load_return()) ::
+      @spec refresh_filter(CacheWorker.key(), CacheWorker.load_return()) ::
               CacheWorker.load_return()
-      def refresh_filter(load_return), do: load_return
+      def refresh_filter(_key, load_return), do: load_return
 
       @doc "Fetches the value for a specific key in the bucket."
+      @impl true
       @spec fetch(CacheWorker.key(), CacheWorker.opts()) ::
               CacheWorker.fetch_return()
       def fetch(key, opts \\ []), do: CacheWorker.fetch(__MODULE__, key, opts)
@@ -123,6 +130,7 @@ defmodule CacheWorker do
       set to true. On success, the `:ok` tuple has a third element as a
       boolean which will be true if `&load/1` was called.
       """
+      @impl true
       @spec fetch_no_save(CacheWorker.key(), CacheWorker.opts()) ::
               CacheWorker.fetch_no_save_return()
       def fetch_no_save(key, opts \\ []),
@@ -147,7 +155,7 @@ defmodule CacheWorker do
       @spec keys :: [CacheWorker.key()] | :no_bucket
       def keys, do: Bucket.keys(unquote(bucket))
 
-      defoverridable init: 1, full_refresh: 0, refresh_filter: 1
+      defoverridable init: 1, full_refresh: 0, refresh_filter: 2
     end
   end
 
@@ -345,7 +353,7 @@ defmodule CacheWorker do
 
   defp spawn_refresher(key, config) do
     parent = self()
-    opts = [filter_fn: &config.mod.refresh_filter/1]
+    opts = [filter_fn: &config.mod.refresh_filter/2]
 
     spawn(fn ->
       try do
@@ -365,7 +373,7 @@ defmodule CacheWorker do
   @spec run_load(Config.t(), key, opts) ::
           {:ok, value, boolean} | {:error, String.t()}
   defp run_load(%{mod: mod, bucket: bucket} = config, key, opts) do
-    filter_fn = Keyword.get(opts, :filter_fn, & &1)
+    filter_fn = Keyword.get(opts, :filter_fn, fn _k, v -> v end)
 
     case invoke_carefully({mod, :load, [key]}) do
       {:ok, val} ->
@@ -408,7 +416,9 @@ defmodule CacheWorker do
 
         {:error, msg}
     end
-    |> filter_fn.()
+    |> (fn ret ->
+          filter_fn.(key, ret)
+        end).()
   end
 
   # Save a value to the bucket; log errors
