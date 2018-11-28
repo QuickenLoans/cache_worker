@@ -2,7 +2,7 @@ defmodule CacheWorker.MixProject do
   @moduledoc false
   use Mix.Project
 
-  @github_url "https://git.rockfin.com/ABellinson/cache_worker"
+  @github_url "https://github.com/QuickenLoans/cache_worker"
 
   def project do
     [
@@ -24,8 +24,8 @@ defmodule CacheWorker.MixProject do
 
       # Hex
       description: """
-      Defines a behavior to be implemented for managing data that should be
-      held in the VM and periodically refreshed.
+      Defines a behavior to be implemented for managing data that should be \
+      held in the VM and periodically refreshed.\
       """,
 
       # Docs
