@@ -83,7 +83,7 @@ defmodule WithRefreshFilter do
     {:ok, nil}
   end
 
-  def refresh_filter(k, v), do: raise("i can raise!")
+  def refresh_filter(_k, _v), do: raise("i can raise!")
 end
 
 defmodule CacheWorkerTest do

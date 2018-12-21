@@ -492,7 +492,8 @@ defmodule CacheWorker do
     self() |> Process.info() |> Keyword.get(:registered_name)
   end
 
-  defp schedule_full_refresh(interval) when interval > 0 do
+  defp schedule_full_refresh(interval)
+       when is_number(interval) and interval > 0 do
     Process.send_after(self(), :full_refresh, Kernel.trunc(interval * 1_000))
   end
 
